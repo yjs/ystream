@@ -1,0 +1,74 @@
+{
+  "name": "ydb",
+  "version": "0.0.1",
+  "description": "The fast CRDT database",
+  "sideEffects": false,
+  "type": "module",
+  "types": "./dist/src/index.d.ts",
+  "funding": {
+    "type": "GitHub Sponsors ❤",
+    "url": "https://github.com/sponsors/dmonad"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": "./src/index.js",
+      "types": "./dist/src/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist",
+    "types": "tsc",
+    "dist": "rollup -c",
+    "debug:browser": "rollup -c && concurrently 'rollup -wc' 'http-server -o test.html'",
+    "debug:node": "node --inspect-brk tests/index.js",
+    "test": "node tests/index.js",
+    "test-coverage": "npm run clean && npm run lint && npm run dist && nyc --check-coverage --lines 100 --branches 100 --functions 100 --statements 100 node --unhandled-rejections=strict ./dist/test.cjs --repetition-time 50 --production",
+    "test-inspect": "node --inspect-brk --unhandled-rejections=strict ./test.js --repetition-time 50 --production",
+    "test-extensive": "node test.js && npm test -- --repetition-time 30000 --extensive",
+    "test-code-coverage": "npm run clean && npm run dist && nyc --reporter html node ./dist/test.cjs --production",
+    "trace-deopt": "clear && rollup -c  && node --trace-deopt dist/test.cjs",
+    "trace-opt": "clear && rollup -c  && node --trace-opt dist/test.cjs",
+    "lint": "standard && tsc",
+    "preversion": "npm run clean && npm run test && npm run types && npm run dist",
+    "postpublish": "npm run clean"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dmonad/isodb.git"
+  },
+  "author": "Kevin Jahns <kevin.jahns@protonmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/dmonad/isodb/issues"
+  },
+  "homepage": "https://github.com/dmonad/isodb#readme",
+  "standard": {
+    "ignore": [
+      "/dist",
+      "/node_modules",
+      "/docs"
+    ]
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^23.0.2",
+    "@rollup/plugin-node-resolve": "^15.0.1",
+    "@types/node": "^18.11.9",
+    "concurrently": "^7.5.0",
+    "http-server": "^14.1.1",
+    "rollup": "^3.2.3",
+    "standard": "^17.0.0",
+    "typescript": "^4.8.4"
+  },
+  "dependencies": {
+    "isodb": "^0.0.1",
+    "lib0": "^0.2.56"
+  }
+}
