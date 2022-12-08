@@ -39,14 +39,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dmonad/isodb.git"
+    "url": "git+https://github.com/yjs/ydb.git"
   },
   "author": "Kevin Jahns <kevin.jahns@protonmail.com>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/dmonad/isodb/issues"
+    "url": "https://github.com/yjs/ydb/issues"
   },
-  "homepage": "https://github.com/dmonad/isodb#readme",
+  "homepage": "https://github.com/yjs/ydb#readme",
   "standard": {
     "ignore": [
       "/dist",
