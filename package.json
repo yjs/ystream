@@ -68,7 +68,7 @@
     "typescript": "^4.8.4"
   },
   "dependencies": {
-    "isodb": "^0.0.1",
+    "isodb": "file:../isodb",
     "lib0": "^0.2.56"
   }
 }
