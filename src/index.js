@@ -1,5 +1,8 @@
 import * as isodb from 'isodb'
 import * as ops from './ops.js'
+import * as Y from 'yjs'
+import { setIfUndefined } from 'lib0/map.js'
+import { bindydoc } from './bindydoc.js'
 
 const def = {
   oplog: {
@@ -29,6 +32,10 @@ export class Ydb {
      * @type {isodb.IDB<typeof def>}
      */
     this.db = db
+    /**
+     * @type {Map<string,Map<string,Set<Y.Doc>>>}
+     */
+    this.collections = new Map()
   }
 
   /**
@@ -51,6 +58,21 @@ export class Ydb {
     return this.db.transact(async tr => {
       tr.tables.oplog.add(new ops.OpValue(0, 0, collection, doc, new ops.YjsOp(update)))
     })
+  }
+
+  /**
+   * @param {string} collection
+   * @param {string} docname
+   */
+  getYdoc (collection, docname) {
+    const col = setIfUndefined(this.collections, collection, () => new Map())
+    const docset = setIfUndefined(col, docname, () => new Set())
+    const ydoc = new Y.Doc({
+      guid: `${collection}#${docname}`
+    })
+    docset.add(ydoc)
+    bindydoc(this, collection, docname, ydoc)
+    return ydoc
   }
 }
 

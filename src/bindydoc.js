@@ -43,5 +43,5 @@ export const bindydoc = async (ydb, collection, doc, ydoc) => {
       Y.applyUpdateV2(ydoc, update.op.update)
     })
   }, ydb, false)
-  // @todo add ydoc to ydb.collections
+  ydoc.emit('synced', [])
 }
