@@ -23,6 +23,7 @@ export const bindydoc = async (ydb, collection, doc, ydoc) => {
         bc.publish(bcroom, buffer.toBase64(update), origin)
       } else {
         // @todo iterate through opened documents in ydb and apply update
+        // Thought: iterating through the docs should be the default
       }
       ydb.addUpdate(collection, doc, update)
     }

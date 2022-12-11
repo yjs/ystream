@@ -3,7 +3,7 @@ import * as decoding from 'lib0/decoding'
 import * as error from 'lib0/error'
 import * as isodb from 'isodb'
 
-const OpTypeYjsOp = 0
+export const OpTypeYjsOp = 0
 
 export class YjsOp {
   /**
