@@ -8,6 +8,8 @@ import * as env from 'lib0/environment'
 import * as bc from 'lib0/broadcastchannel'
 import * as buffer from 'lib0/buffer'
 
+export { OpValue, YjsOp } from './ops.js'
+
 const def = {
   oplog: {
     key: isodb.AutoKey,

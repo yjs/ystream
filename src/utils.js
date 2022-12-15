@@ -3,10 +3,31 @@ import * as Y from 'yjs'
 import { OpValue, YjsOp } from './ops.js'
 
 /**
+ * Merges ops on the same collection & doc
+ *
  * @param {Array<OpValue>} ops
+ * @param {boolean} gc
+ */
+const _mergeOpsHelper = (ops, gc) => {
+  if (gc) {
+    const ydoc = new Y.Doc()
+    ydoc.transact(() => {
+      ops.forEach(op => {
+        Y.applyUpdateV2(ydoc, op.op.update)
+      })
+    })
+    return Y.encodeStateAsUpdateV2(ydoc)
+  } else {
+    return Y.mergeUpdatesV2(ops.map(op => op.op.update))
+  }
+}
+
+/**
+ * @param {Array<OpValue>} ops
+ * @param {boolean} gc
  * @return {Array<OpValue>}
  */
-export const mergeOps = (ops) => {
+export const mergeOps = (ops, gc) => {
   /**
    * @type {Map<string, Map<string, Array<OpValue>>>}
    */
@@ -23,8 +44,8 @@ export const mergeOps = (ops) => {
   const mergedOps = []
   collections.forEach(docs => {
     docs.forEach(docops => {
-      const { client, clock, collection, doc } = docops[docops.length - 1]
-      const mergedUpdate = Y.mergeUpdatesV2(ops.map(op => op.op.update))
+      const { client, clock, collection, doc } = docops[0]
+      const mergedUpdate = _mergeOpsHelper(ops, gc)
       mergedOps.push(new OpValue(client, clock, collection, doc, new YjsOp(mergedUpdate)))
     })
   })
