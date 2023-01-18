@@ -24,6 +24,10 @@ export class Ydb {
      * @type {Map<string,Map<string,Set<Y.Doc>>>}
      */
     this.collections = new Map()
+    /**
+     * @type {Set<import('./comm.js').Comm>}
+     */
+    this.comms = new Set()
   }
 
   /**

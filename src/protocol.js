@@ -39,13 +39,14 @@ export const writeOps = (encoder, ops) => {
 }
 
 /**
+ * @param {encoding.Encoder} encoder
  * @param {decoding.Decoder} decoder
  * @param {Ydb} ydb
  */
-const readRequestOps = async (decoder, ydb) => {
+const readRequestOps = async (encoder, decoder, ydb) => {
   const clock = decoding.readVarUint(decoder)
   const ops = await db.getOps(ydb, clock)
-  ydb.applyOps(ops)
+  writeOps(encoder, ops)
 }
 
 /**
@@ -69,7 +70,7 @@ const readOps = (decoder, ydb) => {
  * @param {decoding.Decoder} decoder
  * @param {Ydb} ydb
  */
-export const readMessage = (decoder, ydb) => {
+export const readMessage = async (decoder, ydb) => {
   const encoder = encoding.createEncoder()
   do {
     const messageType = decoding.readUint8(decoder)
@@ -79,7 +80,7 @@ export const readMessage = (decoder, ydb) => {
         break
       }
       case messageRequestOps: {
-        readRequestOps(decoder, ydb)
+        await readRequestOps(encoder, decoder, ydb)
         break
       }
       default:

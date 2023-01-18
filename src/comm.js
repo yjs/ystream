@@ -53,8 +53,16 @@ export class MockComm {
    * @param {import('./ydb.js').Ydb} ydb
    */
   constructor (ydb) {
-    localInstances.add(this)
     this.ydb = ydb
+    localInstances.forEach(comm => {
+      comm.receive(protocol.encodeMessage(encoder => protocol.writeRequestOps(encoder, 0)), this)
+    })
+    localInstances.add(this)
+  }
+
+  destroy () {
+    localInstances.delete(this)
+    this.ydb.comms.delete(this)
   }
 
   /**
@@ -71,8 +79,8 @@ export class MockComm {
    * @param {Uint8Array} message
    * @param {Peer} peer
    */
-  receive (message, peer) {
-    const reply = protocol.readMessage(decoding.createDecoder(message), this.ydb)
+  async receive (message, peer) {
+    const reply = await protocol.readMessage(decoding.createDecoder(message), this.ydb)
     if (reply) {
       peer.receive(encoding.toUint8Array(reply), this)
     }
