@@ -7,6 +7,7 @@ import * as db from './db.js'
 
 const messageOps = 0
 const messageRequestOps = 1
+const messageSynced = 2
 
 /**
  * @param {function(encoding.Encoder):void} f
@@ -40,6 +41,15 @@ export const writeOps = (encoder, ops) => {
 
 /**
  * @param {encoding.Encoder} encoder
+ * @param {number} nextClock
+ */
+export const writeSynced = (encoder, nextClock) => {
+  encoding.writeUint8(encoder, messageSynced)
+  encoding.writeVarUint(encoder, nextClock)
+}
+
+/**
+ * @param {encoding.Encoder} encoder
  * @param {decoding.Decoder} decoder
  * @param {Ydb} ydb
  */
@@ -47,6 +57,7 @@ const readRequestOps = async (encoder, decoder, ydb) => {
   const clock = decoding.readVarUint(decoder)
   const ops = await db.getOps(ydb, clock)
   writeOps(encoder, ops)
+  writeSynced(encoder, ops.length > 0 ? ops[ops.length - 1].clock + 1 : 0)
 }
 
 /**
@@ -81,6 +92,12 @@ export const readMessage = async (decoder, ydb) => {
       }
       case messageRequestOps: {
         await readRequestOps(encoder, decoder, ydb)
+        break
+      }
+      case messageSynced: {
+        decoding.readVarUint(decoder)
+        // @todo this should only fire sync if all Comms are synced
+        ydb.emit('sync', [])
         break
       }
       default:

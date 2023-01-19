@@ -5,16 +5,28 @@ import { setIfUndefined } from 'lib0/map.js'
 import { bindydoc } from './bindydoc.js'
 import * as env from 'lib0/environment'
 import * as bc from 'lib0/broadcastchannel'
+import * as promise from 'lib0/promise'
 import * as buffer from 'lib0/buffer'
 import * as isodb from 'isodb' // eslint-disable-line
 import * as db from './db.js' // eslint-disable-line
+import { Observable } from 'lib0/observable'
 
-export class Ydb {
+/**
+ * @typedef {Object} YdbConf
+ * @property {Array<import('./comm.js').CommConfiguration>} [YdbConf.comms]
+ */
+
+/**
+ * @extends Observable<'sync'>
+ */
+export class Ydb extends Observable {
   /**
    * @param {string} dbname
    * @param {isodb.IDB<typeof db.def>} _db
+   * @param {YdbConf} conf
    */
-  constructor (dbname, _db) {
+  constructor (dbname, _db, { comms = [] } = {}) {
+    super()
     this.dbname = dbname
     /**
      * @type {isodb.IDB<typeof db.def>}
@@ -28,6 +40,12 @@ export class Ydb {
      * @type {Set<import('./comm.js').Comm>}
      */
     this.comms = new Set()
+    this.whenSynced = promise.create(resolve => {
+      this.once('sync', resolve)
+    })
+    comms.forEach(comm => {
+      this.comms.add(comm.init(this))
+    })
   }
 
   /**
@@ -46,9 +64,15 @@ export class Ydb {
    * @param {string} doc
    * @param {Uint8Array} update
    */
-  addUpdate (collection, doc, update) {
-    return this.db.transact(async tr => {
-      tr.tables.oplog.add(new ops.OpValue(0, 0, collection, doc, new ops.YjsOp(update)))
+  async addUpdate (collection, doc, update) {
+    const op = await this.db.transact(async tr => {
+      const op = new ops.OpValue(0, 0, collection, doc, new ops.YjsOp(update))
+      const key = await tr.tables.oplog.add(op)
+      op.clock = key.v
+      return op
+    })
+    this.comms.forEach(comm => {
+      comm.broadcast([op])
     })
   }
 

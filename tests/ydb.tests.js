@@ -2,6 +2,7 @@ import * as t from 'lib0/testing'
 import * as Ydb from '../src/index.js'
 import * as Y from 'yjs' // eslint-disable-line
 import * as utils from '../src/utils.js'
+import * as promise from 'lib0/promise'
 
 /**
  * @param {string} testname
@@ -70,3 +71,37 @@ export const testYdocSync = async tc => {
   console.log('after loaded')
   t.compare(ydoc3.getMap().get('k'), 'v2')
 }
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testComm = async tc => {
+  console.log('drn')
+  await Ydb.deleteYdb(getDbName(tc.testName))
+  await Ydb.deleteYdb(getDbName(tc.testName) + '-2')
+  await Ydb.deleteYdb(getDbName(tc.testName) + '-3')
+  const ydb1 = await Ydb.openYdb(getDbName(tc.testName), {
+    comms: [new Ydb.MockComm()]
+  })
+  const ydb2 = await Ydb.openYdb(getDbName(tc.testName) + '-2', {
+    comms: [new Ydb.MockComm()]
+  })
+  await promise.all([ydb1.whenSynced, ydb2.whenSynced])
+  const ydoc1 = ydb1.getYdoc('collection', 'ydoc')
+  ydoc1.getMap().set('k', 'v1')
+  await promise.wait(10) // @todo implement whenSynced(ydoc1, ydoc2) instead
+  const ydoc2 = ydb2.getYdoc('collection', 'ydoc')
+  await ydoc2.whenLoaded
+  t.compare(ydoc2.getMap().get('k'), 'v1')
+  ydoc1.getMap().set('k', 'v2')
+  t.compare(ydoc1.getMap().get('k'), 'v2')
+  const ydb3 = await Ydb.openYdb(getDbName(tc.testName) + '-3', {
+    comms: [new Ydb.MockComm()]
+  })
+  await ydb3.whenSynced
+  const ydoc3 = ydb3.getYdoc('collection', 'ydoc')
+  await ydoc3.whenLoaded
+  t.compare(ydoc3.getMap().get('k'), 'v2')
+  console.log('drn 22')
+}
+

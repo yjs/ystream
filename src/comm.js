@@ -8,6 +8,10 @@ import * as decoding from 'lib0/decoding'
 import * as encoding from 'lib0/encoding'
 
 /**
+ * @typedef {import('./ydb.js').Ydb} Ydb
+ */
+
+/**
  * @typedef {import('./ops.js').OpValue} OpValue
  */
 
@@ -39,6 +43,19 @@ export class Comm extends Peer {
 }
 
 /**
+ * @interface
+ */
+export class CommConfiguration {
+  /**
+   * @param {Ydb} _ydb
+   * @return {Comm}
+   */
+  init (_ydb) {
+    error.methodUnimplemented()
+  }
+}
+
+/**
  * @type {Set<Comm>}
  */
 const localInstances = new Set()
@@ -48,14 +65,16 @@ const localInstances = new Set()
  *
  * @implements Comm
  */
-export class MockComm {
+class MockCommInstance {
   /**
    * @param {import('./ydb.js').Ydb} ydb
    */
   constructor (ydb) {
     this.ydb = ydb
+    ydb.comms.add(this)
     localInstances.forEach(comm => {
       comm.receive(protocol.encodeMessage(encoder => protocol.writeRequestOps(encoder, 0)), this)
+      this.receive(protocol.encodeMessage(encoder => protocol.writeRequestOps(encoder, 0)), comm)
     })
     localInstances.add(this)
   }
@@ -84,5 +103,17 @@ export class MockComm {
     if (reply) {
       peer.receive(encoding.toUint8Array(reply), this)
     }
+  }
+}
+
+/**
+ * @implements {CommConfiguration}
+ */
+export class MockComm {
+  /**
+   * @param {Ydb} ydb
+   */
+  init (ydb) {
+    return new MockCommInstance(ydb)
   }
 }

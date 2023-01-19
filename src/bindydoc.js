@@ -2,6 +2,7 @@ import * as Y from 'yjs'
 import * as bc from 'lib0/broadcastchannel'
 import * as buffer from 'lib0/buffer'
 import * as env from 'lib0/environment'
+import * as protocol from './protocol.js'
 
 /**
  * @typedef {import('./index.js').Ydb} Ydb
@@ -15,6 +16,7 @@ import * as env from 'lib0/environment'
  */
 export const bindydoc = async (ydb, collection, doc, ydoc) => {
   const bcroom = `${ydb.dbname}#${collection}#${doc}`
+  // const currentClock = ..
   ydoc.on('updateV2', /** @type {function(Uint8Array, any)} */ (update, origin) => {
     if (origin !== ydb) {
       if (env.isBrowser) {
@@ -37,7 +39,7 @@ export const bindydoc = async (ydb, collection, doc, ydoc) => {
       bc.unsubscribe(bcroom, sub)
     })
   }
-  const updates = await ydb.getUpdates(collection, doc, 0)
+  const updates = await ydb.getUpdates(collection, doc, 0) // currentClock
   Y.transact(ydoc, () => {
     updates.forEach(update => {
       Y.applyUpdateV2(ydoc, update.op.update)
