@@ -6,8 +6,8 @@ import { bindydoc } from './bindydoc.js'
 import * as env from 'lib0/environment'
 import * as bc from 'lib0/broadcastchannel'
 import * as buffer from 'lib0/buffer'
-import * as isodb from 'isodb'
-import * as db from './db.js'
+import * as isodb from 'isodb' // eslint-disable-line
+import * as db from './db.js' // eslint-disable-line
 
 export class Ydb {
   /**
@@ -105,5 +105,14 @@ export class Ydb {
     docset.add(ydoc)
     bindydoc(this, collection, docname, ydoc)
     return ydoc
+  }
+
+  destroy () {
+    this.collections.forEach(collection => {
+      collection.forEach(docs => {
+        docs.forEach(doc => doc.destroy())
+      })
+    })
+    return this.db.destroy()
   }
 }
