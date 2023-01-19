@@ -4,7 +4,7 @@ import commonjs from '@rollup/plugin-commonjs'
 export default [{
   input: './tests/index.js',
   output: {
-    file: './dist/index.js',
+    file: './dist/test.browser.js',
     format: 'iife',
     sourcemap: true
   },
