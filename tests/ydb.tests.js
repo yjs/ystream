@@ -76,7 +76,6 @@ export const testYdocSync = async tc => {
  * @param {t.TestCase} tc
  */
 export const testComm = async tc => {
-  console.log('drn')
   await Ydb.deleteYdb(getDbName(tc.testName))
   await Ydb.deleteYdb(getDbName(tc.testName) + '-2')
   await Ydb.deleteYdb(getDbName(tc.testName) + '-3')
@@ -90,6 +89,7 @@ export const testComm = async tc => {
   const ydoc1 = ydb1.getYdoc('collection', 'ydoc')
   ydoc1.getMap().set('k', 'v1')
   await promise.wait(10) // @todo implement whenSynced(ydoc1, ydoc2) instead
+  // > We can simply wait for the log-clocks to be synced
   const ydoc2 = ydb2.getYdoc('collection', 'ydoc')
   await ydoc2.whenLoaded
   t.compare(ydoc2.getMap().get('k'), 'v1')
@@ -102,6 +102,8 @@ export const testComm = async tc => {
   const ydoc3 = ydb3.getYdoc('collection', 'ydoc')
   await ydoc3.whenLoaded
   t.compare(ydoc3.getMap().get('k'), 'v2')
-  console.log('drn 22')
+  await promise.wait(30)
+  console.log(await ydb1.getClocks(), 'clientid: ', ydb1.clientid)
+  console.log(await ydb2.getClocks(), 'clientid: ', ydb2.clientid)
+  console.log(await ydb3.getClocks(), 'clientid: ', ydb3.clientid)
 }
-

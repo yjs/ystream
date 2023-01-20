@@ -1,4 +1,4 @@
-import * as ops from './ops.js'
+import * as dbtypes from './dbtypes.js'
 import * as Y from 'yjs'
 import * as map from 'lib0/map'
 import { setIfUndefined } from 'lib0/map.js'
@@ -10,6 +10,7 @@ import * as buffer from 'lib0/buffer'
 import * as isodb from 'isodb' // eslint-disable-line
 import * as db from './db.js' // eslint-disable-line
 import { Observable } from 'lib0/observable'
+import * as random from 'lib0/random'
 
 /**
  * @typedef {Object} YdbConf
@@ -46,6 +47,7 @@ export class Ydb extends Observable {
     comms.forEach(comm => {
       this.comms.add(comm.init(this))
     })
+    this.clientid = random.uint32()
   }
 
   /**
@@ -53,10 +55,21 @@ export class Ydb extends Observable {
    * @param {string} doc
    * @param {number} [opclock]
    */
-  getUpdates (collection, doc, opclock) {
-    return this.db.transact(tr =>
-      tr.tables.oplog.indexes.doc.getValues({ start: new ops.DocKey(collection, doc, opclock == null ? 0 : (opclock + 1)) })
+  async getUpdates (collection, doc, opclock) {
+    const entries = await this.db.transact(tr =>
+      tr.tables.oplog.indexes.doc.getEntries({ start: new dbtypes.DocKey(collection, doc, opclock == null ? 0 : (opclock + 1)) })
     )
+    /**
+     * @type {Array<dbtypes.OpValue>}
+     */
+    const updates = []
+    entries.forEach(entry => {
+      if (entry.value.client === this.clientid) {
+        entry.value.clock = entry.fkey.v
+      }
+      updates.push(entry.value)
+    })
+    return updates
   }
 
   /**
@@ -66,9 +79,10 @@ export class Ydb extends Observable {
    */
   async addUpdate (collection, doc, update) {
     const op = await this.db.transact(async tr => {
-      const op = new ops.OpValue(0, 0, collection, doc, new ops.YjsOp(update))
+      const op = new dbtypes.OpValue(this.clientid, 0, collection, doc, new dbtypes.YjsOp(update))
       const key = await tr.tables.oplog.add(op)
       op.clock = key.v
+      tr.tables.clocks.set(new isodb.AutoKey(op.client), new dbtypes.ClientClockValue(op.clock, op.clock))
       return op
     })
     this.comms.forEach(comm => {
@@ -76,18 +90,45 @@ export class Ydb extends Observable {
     })
   }
 
+  getClocks () {
+    return this.db.transactReadonly(async tr => {
+      const entries = await tr.tables.clocks.getEntries({})
+      /**
+       * @type {Map<number,dbtypes.ClientClockValue>}
+       */
+      const clocks = new Map()
+      entries.forEach(entry => {
+        clocks.set(entry.key.v, entry.value)
+      })
+      const lastKey = await tr.tables.oplog.getKeys({ reverse: true, limit: 1 })
+      if (lastKey.length >= 0) {
+        clocks.set(this.clientid, new dbtypes.ClientClockValue(lastKey[0].v, lastKey[0].v))
+      }
+      return clocks
+    })
+  }
+
   /**
    * @todo this should be move to bindydoc.js
-   * @param {Array<ops.OpValue>} ops
+   * @param {Array<dbtypes.OpValue>} ops
    */
   applyOps (ops) {
-    this.db.transact(tr => {
-      ops.forEach(op => {
-        tr.tables.oplog.add(op)
+    const p = this.db.transact(async tr => {
+      /**
+       * @type {Map<number,dbtypes.ClientClockValue>}
+       */
+      const clientClockEntries = new Map()
+      await promise.all(ops.map(op =>
+        tr.tables.oplog.add(op).then(localClock => {
+          clientClockEntries.set(op.client, new dbtypes.ClientClockValue(op.clock, localClock.v))
+        })
+      ))
+      clientClockEntries.forEach((clockValue, client) => {
+        tr.tables.clocks.set(new isodb.AutoKey(client), clockValue)
       })
     })
     /**
-     * @type {Map<string, Map<string, Array<ops.OpValue>>>}
+     * @type {Map<string, Map<string, Array<dbtypes.OpValue>>>}
      */
     const sorted = new Map()
     ops.forEach(op => {
@@ -114,6 +155,7 @@ export class Ydb extends Observable {
         })
       }
     })
+    return p
   }
 
   /**

@@ -80,6 +80,38 @@ export const CertificateValue = isodb.StringKey
 /**
  * @implements isodb.IEncodable
  */
+export class ClientClockValue {
+  /**
+   * @param {number} clock
+   * @param {number} localClock
+   */
+  constructor (clock, localClock) {
+    this.clock = clock
+    this.localClock = localClock
+  }
+
+  /**
+   * @param {encoding.Encoder} encoder
+   */
+  encode (encoder) {
+    encoding.writeVarUint(encoder, this.clock)
+    encoding.writeVarUint(encoder, this.localClock)
+  }
+
+  /**
+   * @param {decoding.Decoder} decoder
+   * @return {isodb.IEncodable}
+   */
+  static decode (decoder) {
+    const clock = decoding.readVarUint(decoder)
+    const localClock = decoding.readVarUint(decoder)
+    return new ClientClockValue(clock, localClock)
+  }
+}
+
+/**
+ * @implements isodb.IEncodable
+ */
 export class DocKey {
   /**
    * @param {string} collection
@@ -87,11 +119,6 @@ export class DocKey {
    * @param {number} opid
    */
   constructor (collection, doc, opid) {
-    /**
-     * @todo remove this.v prop
-     * @type {any}
-     */
-    this.v = null
     this.collection = collection
     this.doc = doc
     this.opid = opid

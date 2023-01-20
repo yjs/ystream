@@ -1,4 +1,4 @@
-import * as ops from './ops.js'
+import * as dbtypes from './dbtypes.js'
 import * as isodb from 'isodb'
 import * as utils from './utils.js'
 
@@ -9,17 +9,21 @@ import * as utils from './utils.js'
 export const def = {
   oplog: {
     key: isodb.AutoKey,
-    value: ops.OpValue,
+    value: dbtypes.OpValue,
     indexes: {
       doc: {
-        key: ops.DocKey,
+        key: dbtypes.DocKey,
         /**
          * @param {isodb.AutoKey} k
-         * @param {ops.OpValue} v
+         * @param {dbtypes.OpValue} v
          */
-        mapper: (k, v) => new ops.DocKey(v.collection, v.doc, k.v)
+        mapper: (k, v) => new dbtypes.DocKey(v.collection, v.doc, k.v)
       }
     }
+  },
+  clocks: {
+    key: isodb.AutoKey, // is a clientid
+    value: dbtypes.ClientClockValue
   }
 }
 

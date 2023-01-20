@@ -2,7 +2,6 @@ import * as Y from 'yjs'
 import * as bc from 'lib0/broadcastchannel'
 import * as buffer from 'lib0/buffer'
 import * as env from 'lib0/environment'
-import * as protocol from './protocol.js'
 
 /**
  * @typedef {import('./index.js').Ydb} Ydb

@@ -1,6 +1,6 @@
 import * as map from 'lib0/map'
 import * as Y from 'yjs'
-import { OpValue, YjsOp } from './ops.js'
+import { OpValue, YjsOp } from './dbtypes.js'
 
 /**
  * Merges ops on the same collection & doc

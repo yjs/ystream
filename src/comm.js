@@ -12,7 +12,7 @@ import * as encoding from 'lib0/encoding'
  */
 
 /**
- * @typedef {import('./ops.js').OpValue} OpValue
+ * @typedef {import('./dbtypes.js').OpValue} OpValue
  */
 
 /**

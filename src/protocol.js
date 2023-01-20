@@ -1,5 +1,5 @@
 import { Ydb } from './index.js' // eslint-disable-line
-import * as opTypes from './ops.js'
+import * as dbtypes from './dbtypes.js'
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import * as error from 'lib0/error'
@@ -29,7 +29,7 @@ export const writeRequestOps = (encoder, clock) => {
 
 /**
  * @param {encoding.Encoder} encoder
- * @param {Array<opTypes.OpValue>} ops
+ * @param {Array<dbtypes.OpValue>} ops
  */
 export const writeOps = (encoder, ops) => {
   encoding.writeUint8(encoder, messageOps)
@@ -67,11 +67,11 @@ const readRequestOps = async (encoder, decoder, ydb) => {
 const readOps = (decoder, ydb) => {
   const numOfOps = decoding.readVarUint(decoder)
   /**
-   * @type {Array<opTypes.OpValue>}
+   * @type {Array<dbtypes.OpValue>}
    */
   const ops = []
   for (let i = 0; i < numOfOps; i++) {
-    const op = /** @type {opTypes.OpValue} */ (opTypes.OpValue.decode(decoder))
+    const op = /** @type {dbtypes.OpValue} */ (dbtypes.OpValue.decode(decoder))
     ops.push(op)
   }
   ydb.applyOps(ops)
