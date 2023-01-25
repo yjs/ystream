@@ -90,6 +90,7 @@ class MockCommInstance {
   broadcast (ops) {
     const message = protocol.encodeMessage(encoder => protocol.writeOps(encoder, ops))
     localInstances.forEach(comm => {
+      // @todo dont broadcast to yourself
       comm.receive(message, this)
     })
   }

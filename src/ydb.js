@@ -13,6 +13,34 @@ import { Observable } from 'lib0/observable'
 import * as random from 'lib0/random'
 
 /**
+ * @todo use lib0/array/uniqueBy
+ * @template T
+ * @template M
+ * @param {Array<T>} arr
+ * @param {function(T):M} mapper
+ * @return {Array<T>}
+ */
+const uniqueBy = (arr, mapper) => {
+  /**
+   * @type {Set<M>}
+   */
+  const happened = new Set()
+  /**
+   * @type {Array<T>}
+   */
+  const result = []
+  for (let i = 0; i < arr.length; i++) {
+    const el = arr[i]
+    const mapped = mapper(el)
+    if (!happened.has(mapped)) {
+      happened.add(mapped)
+      result.push(el)
+    }
+  }
+  return result
+}
+
+/**
  * @typedef {Object} YdbConf
  * @property {Array<import('./comm.js').CommConfiguration>} [YdbConf.comms]
  */
@@ -82,7 +110,7 @@ export class Ydb extends Observable {
       const op = new dbtypes.OpValue(this.clientid, 0, collection, doc, new dbtypes.YjsOp(update))
       const key = await tr.tables.oplog.add(op)
       op.clock = key.v
-      tr.tables.clocks.set(new isodb.AutoKey(op.client), new dbtypes.ClientClockValue(op.clock, op.clock))
+      tr.tables.clocks.set(new isodb.UintKey(op.client), new dbtypes.ClientClockValue(op.clock, op.clock))
       return op
     })
     this.comms.forEach(comm => {
@@ -115,16 +143,28 @@ export class Ydb extends Observable {
   applyOps (ops) {
     const p = this.db.transact(async tr => {
       /**
+*      * Maps from clientid to clock
+       * @type {Map<number,number>}
+       */
+      const clocks = new Map()
+      // wait for all clock requests
+      await promise.all(uniqueBy(ops, op => op.client).map(op =>
+        tr.tables.clocks.get(new isodb.UintKey(op.client)).then(clock => {
+          clock && clocks.set(op.client, clock.clock)
+        })
+      ))
+      /**
        * @type {Map<number,dbtypes.ClientClockValue>}
        */
       const clientClockEntries = new Map()
-      await promise.all(ops.map(op =>
+      // 1. Filter ops that have already been applied 2. apply ops 3. update clocks table
+      await promise.all(ops.filter(op => op.clock >= (clocks.get(op.client) || 0)).map(op =>
         tr.tables.oplog.add(op).then(localClock => {
           clientClockEntries.set(op.client, new dbtypes.ClientClockValue(op.clock, localClock.v))
         })
       ))
       clientClockEntries.forEach((clockValue, client) => {
-        tr.tables.clocks.set(new isodb.AutoKey(client), clockValue)
+        tr.tables.clocks.set(new isodb.UintKey(client), clockValue)
       })
     })
     /**

@@ -22,7 +22,7 @@ export const def = {
     }
   },
   clocks: {
-    key: isodb.AutoKey, // is a clientid
+    key: isodb.UintKey, // is a clientid
     value: dbtypes.ClientClockValue
   }
 }
@@ -41,5 +41,7 @@ export const getOps = async (ydb, clock) => {
   const ops = await ydb.db.transact(tr =>
     tr.tables.oplog.getValues({ start: new isodb.AutoKey(clock) })
   )
-  return utils.mergeOps(ops, clock === 0)
+  const mergedOps = utils.mergeOps(ops, clock === 0)
+  console.log('testing merge', { ops, mergedOps })
+  return mergedOps
 }

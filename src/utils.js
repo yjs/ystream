@@ -12,9 +12,10 @@ const _mergeOpsHelper = (ops, gc) => {
   if (gc) {
     const ydoc = new Y.Doc()
     ydoc.transact(() => {
-      ops.forEach(op => {
-        Y.applyUpdateV2(ydoc, op.op.update)
-      })
+      // Apply in reverse because we expect updates in reverse order
+      for (let i = ops.length - 1; i >= 0; i--) {
+        Y.applyUpdateV2(ydoc, ops[i].op.update)
+      }
     })
     return Y.encodeStateAsUpdateV2(ydoc)
   } else {
@@ -45,7 +46,7 @@ export const mergeOps = (ops, gc) => {
   collections.forEach(docs => {
     docs.forEach(docops => {
       const { client, clock, collection, doc } = docops[0]
-      const mergedUpdate = _mergeOpsHelper(ops, gc)
+      const mergedUpdate = _mergeOpsHelper(docops, gc)
       mergedOps.push(new OpValue(client, clock, collection, doc, new YjsOp(mergedUpdate)))
     })
   })
