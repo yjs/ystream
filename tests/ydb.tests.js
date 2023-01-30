@@ -96,18 +96,13 @@ export const testComm = async tc => {
   t.compare(ydoc2.getMap().get('k'), 'v1')
   ydoc1.getMap().set('k', 'v2')
   t.compare(ydoc1.getMap().get('k'), 'v2')
-  promise.wait(50)
   const ydb3 = await Ydb.openYdb(getDbName(tc.testName) + '-3', {
     comms: [new Ydb.MockComm()]
   })
   await ydb3.whenSynced
-  promise.wait(50)
   const ydoc3 = ydb3.getYdoc('collection', 'ydoc')
   await ydoc3.whenLoaded
-  promise.wait(50)
-  console.log('updates 3', ydb3.clientid, await ydb3.getUpdates('collection', 'ydoc')) // @todo remove
   t.compare(ydoc3.getMap().get('k'), 'v2')
-  await promise.wait(30)
   console.log(await ydb1.getClocks(), 'clientid: ', ydb1.clientid)
   console.log(await ydb2.getClocks(), 'clientid: ', ydb2.clientid)
   console.log(await ydb3.getClocks(), 'clientid: ', ydb3.clientid)

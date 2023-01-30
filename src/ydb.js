@@ -85,7 +85,7 @@ export class Ydb extends Observable {
    */
   async getUpdates (collection, doc, opclock) {
     const entries = await this.db.transact(tr =>
-      tr.tables.oplog.indexes.doc.getEntries({ start: new dbtypes.DocKey(collection, doc, opclock == null ? 0 : (opclock + 1)) })
+      tr.tables.oplog.indexes.doc.getEntries({ start: new dbtypes.DocKey(collection, doc, opclock == null ? 0 : opclock) })
     )
     /**
      * @type {Array<dbtypes.OpValue>}
@@ -139,8 +139,10 @@ export class Ydb extends Observable {
   /**
    * @todo this should be move to bindydoc.js
    * @param {Array<dbtypes.OpValue>} ops
+   * @param {boolean} shouldFilter Filter operations with older client-id - this should only be true if the connection is
+   *                               synced
    */
-  applyOps (ops) {
+  applyOps (ops, shouldFilter) {
     const p = this.db.transact(async tr => {
       /**
 *      * Maps from clientid to clock
@@ -158,7 +160,7 @@ export class Ydb extends Observable {
        */
       const clientClockEntries = new Map()
       // 1. Filter ops that have already been applied 2. apply ops 3. update clocks table
-      await promise.all(ops.filter(op => op.clock >= (clocks.get(op.client) || 0)).map(op =>
+      await promise.all((!shouldFilter ? ops : ops.filter(op => op.clock >= (clocks.get(op.client) || 0))).map(op =>
         tr.tables.oplog.add(op).then(localClock => {
           clientClockEntries.set(op.client, new dbtypes.ClientClockValue(op.clock, localClock.v))
         })
@@ -166,6 +168,7 @@ export class Ydb extends Observable {
       clientClockEntries.forEach((clockValue, client) => {
         tr.tables.clocks.set(new isodb.UintKey(client), clockValue)
       })
+      console.log(this.dbname, 'wrote ops', ops)
     })
     /**
      * @type {Map<string, Map<string, Array<dbtypes.OpValue>>>}
@@ -182,6 +185,7 @@ export class Ydb extends Observable {
           if ((docset && docset.size > 0) || env.isBrowser) {
             const mergedUpdate = Y.mergeUpdatesV2(docupdates.map(op => op.op.update))
             if (docset && docset.size > 0) {
+              console.log(this.dbname, 'applying docupdates', docupdates)
               docset.forEach(doc => Y.applyUpdateV2(doc, mergedUpdate))
             }
             if (env.isBrowser) {

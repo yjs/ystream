@@ -34,6 +34,9 @@ export class Peer {
  * @interface
  */
 export class Comm extends Peer {
+  get synced () { return false }
+  set synced (_v) { error.methodUnimplemented() }
+
   /**
    * @param {Array<OpValue>} _ops
    */
@@ -70,6 +73,8 @@ class MockCommInstance {
    * @param {import('./ydb.js').Ydb} ydb
    */
   constructor (ydb) {
+    this.synced = false
+    this.comm = true
     this.ydb = ydb
     ydb.comms.add(this)
     localInstances.forEach(comm => {
@@ -100,7 +105,7 @@ class MockCommInstance {
    * @param {Peer} peer
    */
   async receive (message, peer) {
-    const reply = await protocol.readMessage(decoding.createDecoder(message), this.ydb)
+    const reply = await protocol.readMessage(decoding.createDecoder(message), this.ydb, this)
     if (reply) {
       peer.receive(encoding.toUint8Array(reply), this)
     }

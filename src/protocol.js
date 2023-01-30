@@ -4,6 +4,7 @@ import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import * as error from 'lib0/error'
 import * as db from './db.js'
+import * as array from 'lib0/array'
 
 const messageOps = 0
 const messageRequestOps = 1
@@ -63,8 +64,9 @@ const readRequestOps = async (encoder, decoder, ydb) => {
 /**
  * @param {decoding.Decoder} decoder
  * @param {Ydb} ydb
+ * @param {import('./comm.js').Comm} comm
  */
-const readOps = (decoder, ydb) => {
+const readOps = (decoder, ydb, comm) => {
   const numOfOps = decoding.readVarUint(decoder)
   /**
    * @type {Array<dbtypes.OpValue>}
@@ -74,20 +76,22 @@ const readOps = (decoder, ydb) => {
     const op = /** @type {dbtypes.OpValue} */ (dbtypes.OpValue.decode(decoder))
     ops.push(op)
   }
-  ydb.applyOps(ops)
+  console.log(ydb.dbname, 'applying ops', ops)
+  return ydb.applyOps(ops, comm.synced)
 }
 
 /**
  * @param {decoding.Decoder} decoder
  * @param {Ydb} ydb
+ * @param {import('./comm.js').Comm} comm
  */
-export const readMessage = async (decoder, ydb) => {
+export const readMessage = async (decoder, ydb, comm) => {
   const encoder = encoding.createEncoder()
   do {
     const messageType = decoding.readUint8(decoder)
     switch (messageType) {
       case messageOps: {
-        readOps(decoder, ydb)
+        await readOps(decoder, ydb, comm)
         break
       }
       case messageRequestOps: {
@@ -96,8 +100,12 @@ export const readMessage = async (decoder, ydb) => {
       }
       case messageSynced: {
         decoding.readVarUint(decoder)
+        comm.synced = true
         // @todo this should only fire sync if all Comms are synced
-        ydb.emit('sync', [])
+        if (array.from(ydb.comms.values()).every(comm => comm.synced)) {
+          console.log(ydb.dbname, 'synced')
+          ydb.emit('sync', [])
+        }
         break
       }
       default:
