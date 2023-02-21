@@ -3,6 +3,7 @@ import * as Ydb from '../src/index.js'
 import * as Y from 'yjs' // eslint-disable-line
 import * as utils from '../src/utils.js'
 import * as promise from 'lib0/promise'
+import * as array from 'lib0/array'
 
 /**
  * @param {string} testname
@@ -73,6 +74,17 @@ export const testYdocSync = async tc => {
 }
 
 /**
+ * @param {Y.Doc} ydoc1
+ * @param {Y.Doc} ydoc2
+ */
+const waitDocsSynced = (ydoc1, ydoc2) =>
+  promise.until(0, () => {
+    const e1 = Y.encodeStateAsUpdateV2(ydoc1)
+    const e2 = Y.encodeStateAsUpdateV2(ydoc2)
+    return array.equalFlat(e1, e2)
+  })
+
+/**
  * @param {t.TestCase} tc
  */
 export const testComm = async tc => {
@@ -88,11 +100,9 @@ export const testComm = async tc => {
   await promise.all([ydb1.whenSynced, ydb2.whenSynced])
   const ydoc1 = ydb1.getYdoc('collection', 'ydoc')
   ydoc1.getMap().set('k', 'v1')
-  await promise.wait(50) // @todo implement whenSynced(ydoc1, ydoc2) instead
-  await promise.wait(50) // @todo implement whenSynced(ydoc1, ydoc2) instead
-  // > We can simply wait for the log-clocks to be synced
   const ydoc2 = ydb2.getYdoc('collection', 'ydoc')
   await ydoc2.whenLoaded
+  await waitDocsSynced(ydoc1, ydoc2)
   t.compare(ydoc2.getMap().get('k'), 'v1')
   ydoc1.getMap().set('k', 'v2')
   t.compare(ydoc1.getMap().get('k'), 'v2')

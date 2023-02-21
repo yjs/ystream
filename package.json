@@ -69,7 +69,7 @@
   },
   "dependencies": {
     "isodb": "file:../isodb",
-    "lib0": "^0.2.60",
+    "lib0": "^0.2.63",
     "yjs": "^13.5.43"
   }
 }
