@@ -113,7 +113,7 @@ export const readMessage = async (decoder, ydb, comm) => {
         error.unexpectedCase()
     }
   } while (decoding.hasContent(decoder))
-  if (encoder.bufs.length > 0 || encoder.cpos > 0) {
+  if (encoding.hasContent(encoder)) {
     return encoder
   }
   return null
