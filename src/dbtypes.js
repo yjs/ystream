@@ -46,6 +46,7 @@ export class OpValue {
       case YjsOp:
         encoding.writeVarUint8Array(encoder, this.op.update)
         break
+      /* c8 ignore next 2 */
       default:
         error.unexpectedCase()
     }
@@ -68,6 +69,7 @@ export class OpValue {
         op = new YjsOp(update)
         break
       }
+      /* c8 ignore next 2 */
       default:
         error.unexpectedCase()
     }

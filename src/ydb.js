@@ -182,12 +182,14 @@ export class Ydb extends Observable {
       if (docs) {
         col.forEach((docupdates, docname) => {
           const docset = docs.get(docname)
+          /* c8 ignore next */
           if ((docset && docset.size > 0) || env.isBrowser) {
             const mergedUpdate = Y.mergeUpdatesV2(docupdates.map(op => op.op.update))
             if (docset && docset.size > 0) {
               console.log(this.dbname, 'applying docupdates', docupdates)
               docset.forEach(doc => Y.applyUpdateV2(doc, mergedUpdate))
             }
+            /* c8 ignore start */
             if (env.isBrowser) {
               // @todo could use more efficient encoding - allow Uint8Array in lib0/bc
               const mergedUpdate = Y.mergeUpdatesV2(ops.map(op => op.op.update))
@@ -195,6 +197,7 @@ export class Ydb extends Observable {
               const bcroom = `${this.dbname}#${colname}#${docname}`
               bc.publish(bcroom, buffer.toBase64(mergedUpdate), this)
             }
+            /* c8 ignore end */
           }
         })
       }

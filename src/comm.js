@@ -15,6 +15,7 @@ import * as encoding from 'lib0/encoding'
  * @typedef {import('./dbtypes.js').OpValue} OpValue
  */
 
+/* c8 ignore start */
 /**
  * Interface that describes a peer that can receive messages
  * @interface
@@ -28,7 +29,9 @@ export class Peer {
     error.methodUnimplemented()
   }
 }
+/* c8 ignore end */
 
+/* c8 ignore start */
 /**
  * Interface that describes a communication channel.
  * @interface
@@ -44,7 +47,9 @@ export class Comm extends Peer {
     error.methodUnimplemented()
   }
 }
+/* c8 ignore end */
 
+/* c8 ignore start */
 /**
  * @interface
  */
@@ -57,6 +62,7 @@ export class CommConfiguration {
     error.methodUnimplemented()
   }
 }
+/* c8 ignore end */
 
 /**
  * @type {Set<Comm>}

@@ -108,6 +108,7 @@ export const readMessage = async (decoder, ydb, comm) => {
         }
         break
       }
+      /* c8 ignore next 3 */
       default:
         // Unknown message-type
         error.unexpectedCase()

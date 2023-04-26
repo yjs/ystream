@@ -18,6 +18,7 @@ export const bindydoc = async (ydb, collection, doc, ydoc) => {
   // const currentClock = ..
   ydoc.on('updateV2', /** @type {function(Uint8Array, any)} */ (update, origin) => {
     if (origin !== ydb) {
+      /* c8 ignore next 3 */
       if (env.isBrowser) {
         // @todo could use more efficient encoding - allow Uint8Array in lib0/bc
         bc.publish(bcroom, buffer.toBase64(update), origin)
@@ -28,6 +29,7 @@ export const bindydoc = async (ydb, collection, doc, ydoc) => {
       ydb.addUpdate(collection, doc, update)
     }
   })
+  /* c8 ignore start */
   if (env.isBrowser) {
     const sub = bc.subscribe(bcroom, (data, origin) => {
       if (origin !== ydb) {
@@ -38,6 +40,7 @@ export const bindydoc = async (ydb, collection, doc, ydoc) => {
       bc.unsubscribe(bcroom, sub)
     })
   }
+  /* c8 ignore end */
   const updates = await ydb.getUpdates(collection, doc, 0) // currentClock
   Y.transact(ydoc, () => {
     updates.forEach(update => {
