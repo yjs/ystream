@@ -65,10 +65,10 @@
     "http-server": "^14.1.1",
     "rollup": "^3.2.3",
     "standard": "^17.0.0",
-    "typescript": "^4.8.4"
+    "typescript": "^5.0.4"
   },
   "dependencies": {
-    "isodb": "file:../isodb",
+    "isodb": "^0.1.0",
     "lib0": "^0.2.63",
     "yjs": "^13.5.43"
   }

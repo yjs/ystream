@@ -6,6 +6,17 @@ import * as promise from 'lib0/promise'
 import * as array from 'lib0/array'
 
 /**
+ * @param {Y.Doc} ydoc1
+ * @param {Y.Doc} ydoc2
+ */
+const waitDocsSynced = (ydoc1, ydoc2) =>
+  promise.until(0, () => {
+    const e1 = Y.encodeStateAsUpdateV2(ydoc1)
+    const e2 = Y.encodeStateAsUpdateV2(ydoc2)
+    return array.equalFlat(e1, e2)
+  })
+
+/**
  * @param {string} testname
  */
 const getDbName = testname => '.test_dbs/' + testname
@@ -72,17 +83,6 @@ export const testYdocSync = async tc => {
   console.log('after loaded')
   t.compare(ydoc3.getMap().get('k'), 'v2')
 }
-
-/**
- * @param {Y.Doc} ydoc1
- * @param {Y.Doc} ydoc2
- */
-const waitDocsSynced = (ydoc1, ydoc2) =>
-  promise.until(0, () => {
-    const e1 = Y.encodeStateAsUpdateV2(ydoc1)
-    const e2 = Y.encodeStateAsUpdateV2(ydoc2)
-    return array.equalFlat(e1, e2)
-  })
 
 /**
  * @param {t.TestCase} tc

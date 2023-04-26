@@ -37,7 +37,7 @@ export const mergeOps = (ops, gc) => {
   // Then, when we generate the merged updates (based on the collections map), the ops are already in order
   for (let i = ops.length - 1; i >= 0; i--) {
     const op = ops[i]
-    map.setIfUndefined(map.setIfUndefined(collections, op.collection, map.create), op.doc, () => []).push(op)
+    map.setIfUndefined(map.setIfUndefined(collections, op.collection, map.create), op.doc, () => /** @type {Array<OpValue>} */ ([])).push(op)
   }
   /**
    * @type {Array<OpValue>}

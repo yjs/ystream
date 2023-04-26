@@ -7,23 +7,33 @@ import * as utils from './utils.js'
  */
 
 export const def = {
-  oplog: {
-    key: isodb.AutoKey,
-    value: dbtypes.OpValue,
-    indexes: {
-      doc: {
-        key: dbtypes.DocKey,
+  tables: {
+    oplog: {
+      key: isodb.AutoKey,
+      value: dbtypes.OpValue,
+      indexes: {
+        doc: {
         /**
          * @param {isodb.AutoKey} k
          * @param {dbtypes.OpValue} v
          */
-        mapper: (k, v) => new dbtypes.DocKey(v.collection, v.doc, k.v)
+          mapper: (k, v) => new dbtypes.DocKey(v.collection, v.doc, k.v),
+          key: dbtypes.DocKey
+        },
+        collection: {
+        /**
+         * @param {isodb.AutoKey} k
+         * @param {dbtypes.OpValue} v
+         */
+          mapper: (k, v) => new dbtypes.CollectionKey(v.collection, k.v),
+          key: dbtypes.CollectionKey
+        }
       }
+    },
+    clocks: {
+      key: isodb.Uint32Key, // is a clientid
+      value: dbtypes.ClientClockValue
     }
-  },
-  clocks: {
-    key: isodb.UintKey, // is a clientid
-    value: dbtypes.ClientClockValue
   }
 }
 

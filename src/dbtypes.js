@@ -112,6 +112,38 @@ export class ClientClockValue {
 /**
  * @implements isodb.IEncodable
  */
+export class CollectionKey {
+  /**
+   * @param {string} collection
+   * @param {number} opid
+   */
+  constructor (collection, opid) {
+    this.collection = collection
+    this.opid = opid
+  }
+
+  /**
+   * @param {encoding.Encoder} encoder
+   */
+  encode (encoder) {
+    encoding.writeVarString(encoder, this.collection)
+    encoding.writeUint32(encoder, this.opid)
+  }
+
+  /**
+   * @param {decoding.Decoder} decoder
+   * @return {isodb.IEncodable}
+   */
+  static decode (decoder) {
+    const collection = decoding.readVarString(decoder)
+    const opid = decoding.readUint32(decoder)
+    return new CollectionKey(collection, opid)
+  }
+}
+
+/**
+ * @implements isodb.IEncodable
+ */
 export class DocKey {
   /**
    * @param {string} collection

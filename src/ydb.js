@@ -110,7 +110,7 @@ export class Ydb extends Observable {
       const op = new dbtypes.OpValue(this.clientid, 0, collection, doc, new dbtypes.YjsOp(update))
       const key = await tr.tables.oplog.add(op)
       op.clock = key.v
-      tr.tables.clocks.set(new isodb.UintKey(op.client), new dbtypes.ClientClockValue(op.clock, op.clock))
+      tr.tables.clocks.set(op.client, new dbtypes.ClientClockValue(op.clock, op.clock))
       return op
     })
     this.comms.forEach(comm => {
@@ -151,7 +151,7 @@ export class Ydb extends Observable {
       const clocks = new Map()
       // wait for all clock requests
       await promise.all(uniqueBy(ops, op => op.client).map(op =>
-        tr.tables.clocks.get(new isodb.UintKey(op.client)).then(clock => {
+        tr.tables.clocks.get(op.client).then(clock => {
           clock && clocks.set(op.client, clock.clock)
         })
       ))
@@ -166,7 +166,7 @@ export class Ydb extends Observable {
         })
       ))
       clientClockEntries.forEach((clockValue, client) => {
-        tr.tables.clocks.set(new isodb.UintKey(client), clockValue)
+        tr.tables.clocks.set(client, clockValue)
       })
       console.log(this.dbname, 'wrote ops', ops)
     })
@@ -175,7 +175,7 @@ export class Ydb extends Observable {
      */
     const sorted = new Map()
     ops.forEach(op => {
-      map.setIfUndefined(map.setIfUndefined(sorted, op.collection, map.create), op.doc, () => []).push(op)
+      map.setIfUndefined(map.setIfUndefined(sorted, op.collection, map.create), op.doc, () => /** @type {Array<dbtypes.OpValue>} */ ([])).push(op)
     })
     sorted.forEach((col, colname) => {
       const docs = this.collections.get(colname)
