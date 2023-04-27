@@ -2,6 +2,7 @@ import * as Y from 'yjs'
 import * as bc from 'lib0/broadcastchannel'
 import * as buffer from 'lib0/buffer'
 import * as env from 'lib0/environment'
+import * as db from './db.js'
 
 /**
  * @typedef {import('./index.js').Ydb} Ydb
@@ -41,7 +42,7 @@ export const bindydoc = async (ydb, collection, doc, ydoc) => {
     })
   }
   /* c8 ignore end */
-  const updates = await ydb.getUpdates(collection, doc, 0) // currentClock
+  const updates = await db.getDocOps(ydb, collection, doc, 0) // currentClock
   Y.transact(ydoc, () => {
     updates.forEach(update => {
       Y.applyUpdateV2(ydoc, update.op.update)

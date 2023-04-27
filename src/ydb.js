@@ -81,28 +81,6 @@ export class Ydb extends Observable {
   /**
    * @param {string} collection
    * @param {string} doc
-   * @param {number} [opclock]
-   */
-  async getUpdates (collection, doc, opclock) {
-    const entries = await this.db.transact(tr =>
-      tr.tables.oplog.indexes.doc.getEntries({ start: new dbtypes.DocKey(collection, doc, opclock == null ? 0 : opclock) })
-    )
-    /**
-     * @type {Array<dbtypes.OpValue>}
-     */
-    const updates = []
-    entries.forEach(entry => {
-      if (entry.value.client === this.clientid) {
-        entry.value.clock = entry.fkey.v
-      }
-      updates.push(entry.value)
-    })
-    return updates
-  }
-
-  /**
-   * @param {string} collection
-   * @param {string} doc
    * @param {Uint8Array} update
    */
   async addUpdate (collection, doc, update) {

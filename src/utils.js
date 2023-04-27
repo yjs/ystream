@@ -1,6 +1,6 @@
 import * as map from 'lib0/map'
 import * as Y from 'yjs'
-import { OpValue, YjsOp } from './dbtypes.js'
+import { OpValue, YjsOp } from './dbtypes.js' // eslint-disable-line
 
 /**
  * Merges ops on the same collection & doc
@@ -9,6 +9,28 @@ import { OpValue, YjsOp } from './dbtypes.js'
  * @param {boolean} gc
  */
 const _mergeOpsHelper = (ops, gc) => {
+  /**
+   * @type {Array<OpValue>}
+   */
+  const yjsOps = []
+  /**
+   * @type {Array<OpValue>}
+   */
+  const restOps = []
+  ops.forEach(op => {
+    if (op.op.constructor === YjsOp) {
+      yjsOps.push(op)
+    /* c8 ignore next 3 */
+    } else {
+      restOps.push(op)
+    }
+  })
+  /* c8 ignore next 3 */
+  if (yjsOps.length === 0) {
+    return restOps
+  }
+  const yop = yjsOps[0]
+  restOps.push(yop)
   if (gc) {
     const ydoc = new Y.Doc()
     ydoc.transact(() => {
@@ -17,10 +39,11 @@ const _mergeOpsHelper = (ops, gc) => {
         Y.applyUpdateV2(ydoc, ops[i].op.update)
       }
     })
-    return Y.encodeStateAsUpdateV2(ydoc)
+    yop.op.update = Y.encodeStateAsUpdateV2(ydoc)
   } else {
-    return Y.mergeUpdatesV2(ops.map(op => op.op.update))
+    yop.op.update = Y.mergeUpdatesV2(ops.map(op => op.op.update))
   }
+  return restOps
 }
 
 /**
@@ -45,10 +68,8 @@ export const mergeOps = (ops, gc) => {
   const mergedOps = []
   collections.forEach(docs => {
     docs.forEach(docops => {
-      const { client, clock, collection, doc } = docops[0]
-      const mergedUpdate = _mergeOpsHelper(docops, gc)
-      mergedOps.push(new OpValue(client, clock, collection, doc, new YjsOp(mergedUpdate)))
+      mergedOps.push(..._mergeOpsHelper(docops, gc))
     })
   })
-  return mergedOps.reverse()
+  return mergedOps.reverse().sort((a, b) => a.clock - b.clock)
 }
