@@ -23,7 +23,6 @@
   "scripts": {
     "clean": "rm -rf dist",
     "types": "tsc",
-    "dist": "rollup -c",
     "gentesthtml": "npx 0gentesthtml --script ./tests/index.js > test.html",
     "debug:browser": "npm run gentesthtml && npx 0serve -o test.html",
     "debug:node": "node --inspect-brk tests/index.js",
@@ -32,8 +31,6 @@
     "test-inspect": "node --inspect-brk --unhandled-rejections=strict ./test.js --repetition-time 50 --production",
     "test-extensive": "node test.js && npm test -- --repetition-time 30000 --extensive",
     "test-code-coverage": "npm run clean && npm run dist && nyc --reporter html node ./dist/test.cjs --production",
-    "trace-deopt": "clear && rollup -c  && node --trace-deopt dist/test.cjs",
-    "trace-opt": "clear && rollup -c  && node --trace-opt dist/test.cjs",
     "lint": "standard && tsc",
     "preversion": "npm run clean && npm run test && npm run types && npm run dist",
     "postpublish": "npm run clean"
@@ -56,16 +53,12 @@
     ]
   },
   "engines": {
-    "node": ">=14"
+    "node": ">=16"
   },
   "devDependencies": {
-    "@rollup/plugin-commonjs": "^23.0.2",
-    "@rollup/plugin-node-resolve": "^15.0.1",
     "@types/node": "^18.11.9",
     "c8": "^7.13.0",
     "concurrently": "^7.5.0",
-    "http-server": "^14.1.1",
-    "rollup": "^3.2.3",
     "standard": "^17.0.0",
     "typescript": "^5.0.4"
   },
