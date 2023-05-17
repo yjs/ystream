@@ -85,7 +85,7 @@ export class Ydb extends Observable {
    */
   async addUpdate (collection, doc, update) {
     const op = await this.db.transact(async tr => {
-      const op = new dbtypes.OpValue(this.clientid, 0, collection, doc, new dbtypes.YjsOp(update))
+      const op = new dbtypes.OpValue(this.clientid, 0, collection, doc, new dbtypes.OpYjsUpdate(update))
       const key = await tr.tables.oplog.add(op)
       op.clock = key.v
       tr.tables.clocks.set(op.client, new dbtypes.ClientClockValue(op.clock, op.clock))

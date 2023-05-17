@@ -3,14 +3,60 @@ import * as decoding from 'lib0/decoding'
 import * as error from 'lib0/error'
 import * as isodb from 'isodb'
 
-export const OpTypeYjsOp = 0
+export class AbstractOp {
+  /**
+   * @return {number}
+   */
+  get type () {
+    return error.methodUnimplemented()
+  }
 
-export class YjsOp {
+  /**
+   * @param {encoding.Encoder} _encoder
+   */
+  encode (_encoder) {
+    error.methodUnimplemented()
+  }
+
+  /**
+   * @param {decoding.Decoder} _decoder
+   * @return {isodb.IEncodable}
+   */
+  static decode (_decoder) {
+    error.methodUnimplemented()
+  }
+}
+
+export const OpYjsUpdateType = 0
+
+/**
+ * @implements AbstractOp
+ */
+export class OpYjsUpdate {
   /**
    * @param {Uint8Array} update
    */
   constructor (update) {
     this.update = update
+  }
+
+  get type () {
+    return OpYjsUpdateType
+  }
+
+  /**
+   * @param {encoding.Encoder} encoder
+   */
+  encode (encoder) {
+    encoding.writeVarUint8Array(encoder, this.update)
+  }
+
+  /**
+   * @param {decoding.Decoder} decoder
+   * @return {AbstractOp}
+   */
+  static decode (decoder) {
+    return new OpYjsUpdate(decoding.readVarUint8Array(decoder))
   }
 }
 
@@ -23,7 +69,7 @@ export class OpValue {
    * @param {number} clock
    * @param {string} collection
    * @param {string} doc
-   * @param {YjsOp} op
+   * @param {AbstractOp} op
    */
   constructor (client, clock, collection, doc, op) {
     this.client = client
@@ -37,19 +83,12 @@ export class OpValue {
    * @param {encoding.Encoder} encoder
    */
   encode (encoder) {
-    encoding.writeUint8(encoder, OpTypeYjsOp)
+    encoding.writeUint8(encoder, OpYjsUpdateType)
     encoding.writeVarUint(encoder, this.client)
     encoding.writeVarUint(encoder, this.clock)
     encoding.writeVarString(encoder, this.collection)
     encoding.writeVarString(encoder, this.doc)
-    switch (this.op.constructor) {
-      case YjsOp:
-        encoding.writeVarUint8Array(encoder, this.op.update)
-        break
-      /* c8 ignore next 2 */
-      default:
-        error.unexpectedCase()
-    }
+    this.op.encode(encoder)
   }
 
   /**
@@ -64,9 +103,8 @@ export class OpValue {
     const doc = decoding.readVarString(decoder)
     let op
     switch (type) {
-      case OpTypeYjsOp: {
-        const update = decoding.readVarUint8Array(decoder)
-        op = new YjsOp(update)
+      case OpYjsUpdateType: {
+        op = OpYjsUpdate.decode(decoder)
         break
       }
       /* c8 ignore next 2 */
@@ -78,6 +116,68 @@ export class OpValue {
 }
 
 export const CertificateValue = isodb.StringKey
+
+const RequestDocumentType = 0
+
+/**
+ * @implements isodb.IEncodable
+ */
+export class RequestValue {
+  /**
+   * @param {encoding.Encoder} _encoder
+   */
+  encode (_encoder) {
+    error.unexpectedCase()
+  }
+
+  /**
+   * @param {decoding.Decoder} decoder
+   * @return {isodb.IEncodable}
+   */
+  static decode (decoder) {
+    const requestType = decoding.peekVarUint(decoder)
+    switch (requestType) {
+      case RequestDocumentType: {
+        return RequestDocumentValue.decode(decoder)
+      }
+      default:
+        error.methodUnimplemented()
+    }
+  }
+}
+
+export class RequestDocumentValue extends RequestValue {
+  /**
+   * @param {string} collection
+   * @param {string} doc
+   */
+  constructor (collection, doc) {
+    super()
+    this.collection = collection
+    this.doc = doc
+  }
+
+  /**
+   * @param {encoding.Encoder} encoder
+   */
+  encode (encoder) {
+    encoding.writeVarUint(encoder, RequestDocumentType)
+    encoding.writeVarString(encoder, this.collection)
+    encoding.writeVarString(encoder, this.doc)
+  }
+
+  /**
+   * @param {decoding.Decoder} decoder
+   * @return {RequestValue}
+   */
+  static decode (decoder) {
+    const type = decoding.readVarUint(decoder)
+    if (type !== RequestDocumentType) error.methodUnimplemented()
+    const collection = decoding.readVarString(decoder)
+    const doc = decoding.readVarString(decoder)
+    return new RequestDocumentValue(collection, doc)
+  }
+}
 
 /**
  * @implements isodb.IEncodable

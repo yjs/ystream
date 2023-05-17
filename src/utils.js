@@ -1,6 +1,6 @@
 import * as map from 'lib0/map'
 import * as Y from 'yjs'
-import { OpValue, YjsOp } from './dbtypes.js' // eslint-disable-line
+import { OpValue, OpYjsUpdate } from './dbtypes.js' // eslint-disable-line
 
 /**
  * Merges ops on the same collection & doc
@@ -18,7 +18,7 @@ const _mergeOpsHelper = (ops, gc) => {
    */
   const restOps = []
   ops.forEach(op => {
-    if (op.op.constructor === YjsOp) {
+    if (op.op.constructor === OpYjsUpdate) {
       yjsOps.push(op)
     /* c8 ignore next 3 */
     } else {

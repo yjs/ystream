@@ -17,18 +17,18 @@ export const def = {
       value: dbtypes.OpValue,
       indexes: {
         doc: {
-        /**
-         * @param {isodb.AutoKey} k
-         * @param {dbtypes.OpValue} v
-         */
+          /**
+           * @param {isodb.AutoKey} k
+           * @param {dbtypes.OpValue} v
+           */
           mapper: (k, v) => new dbtypes.DocKey(v.collection, v.doc, k.v),
           key: dbtypes.DocKey
         },
         collection: {
-        /**
-         * @param {isodb.AutoKey} k
-         * @param {dbtypes.OpValue} v
-         */
+          /**
+           * @param {isodb.AutoKey} k
+           * @param {dbtypes.OpValue} v
+           */
           mapper: (k, v) => new dbtypes.CollectionKey(v.collection, k.v),
           key: dbtypes.CollectionKey
         }
@@ -37,6 +37,10 @@ export const def = {
     clocks: {
       key: dbtypes.ClocksKey,
       value: dbtypes.ClientClockValue
+    },
+    requests: {
+      key: isodb.AutoKey,
+      value: dbtypes.RequestValue
     }
   }
 }
