@@ -59,10 +59,10 @@ export const testMergeOps = (_tc) => {
   t.assert(merged.length === 2)
   t.assert(merged[0].client === 0)
   t.assert(merged[0].clock === 1)
-  t.compare(merged[0].op.update, emptyUpdate)
+  t.compare(/** @type {import('../src/dbtypes.js').OpYjsUpdate} */ (merged[0].op).update, emptyUpdate)
   t.assert(merged[1].client === 0)
   t.assert(merged[1].clock === 2)
-  t.compare(merged[1].op.update, emptyUpdate)
+  t.compare(/** @type {import('../src/dbtypes.js').OpYjsUpdate} */ (merged[1].op).update, emptyUpdate)
 }
 
 /**

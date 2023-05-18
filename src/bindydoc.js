@@ -3,6 +3,7 @@ import * as bc from 'lib0/broadcastchannel'
 import * as buffer from 'lib0/buffer'
 import * as env from 'lib0/environment'
 import * as db from './db.js'
+import * as dbtypes from './dbtypes.js'
 
 /**
  * @typedef {import('./index.js').Ydb} Ydb
@@ -45,7 +46,9 @@ export const bindydoc = async (ydb, collection, doc, ydoc) => {
   const updates = await db.getDocOps(ydb, collection, doc, 0) // currentClock
   Y.transact(ydoc, () => {
     updates.forEach(update => {
-      Y.applyUpdateV2(ydoc, update.op.update)
+      if (update.op.type === dbtypes.OpYjsUpdateType) {
+        Y.applyUpdateV2(ydoc, /** @type {dbtypes.OpYjsUpdate} */ (update.op).update)
+      }
     })
   }, ydb, false)
   ydoc.emit('load', [])

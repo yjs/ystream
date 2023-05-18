@@ -2,8 +2,17 @@ import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import * as error from 'lib0/error'
 import * as isodb from 'isodb'
+import * as Y from 'yjs'
+import * as math from 'lib0/math'
 
 export class AbstractOp {
+  /**
+   * @param {any} _anyarg
+   */
+  constructor (_anyarg) {
+    error.methodUnimplemented()
+  }
+
   /**
    * @return {number}
    */
@@ -20,14 +29,209 @@ export class AbstractOp {
 
   /**
    * @param {decoding.Decoder} _decoder
-   * @return {isodb.IEncodable}
+   * @return {AbstractOp}
    */
   static decode (_decoder) {
+    error.methodUnimplemented()
+  }
+
+  /**
+   * @param {Array<OpValue>} _ops
+   * @param {boolean} _gc
+   * @return {OpValue}
+   */
+  static merge (_ops, _gc) {
     error.methodUnimplemented()
   }
 }
 
 export const OpYjsUpdateType = 0
+export const OpNoPermissionType = 1
+export const OpGroupType = 2
+export const OpPermissionType = 3
+
+/**
+ * An operation that contains information about which users have access to a group.
+ *
+ * @implements AbstractOp
+ */
+export class OpGroup {
+  constructor () {
+    /**
+     * @type {Map<number,number>}
+     */
+    this.read = new Map()
+    /**
+     * @type {Map<number,number>}
+     */
+    this.write = new Map()
+    /**
+     * @type {Map<number,number>}
+     */
+    this.admin = new Map()
+  }
+
+  /**
+   * @param {number} clientid
+   */
+  hasReadAccess (clientid) {
+    return (this.read.get(clientid) || 0) % 2 === 1
+  }
+
+  /**
+   * @param {number} clientid
+   */
+  hasWriteAccess (clientid) {
+    return (this.write.get(clientid) || 0) % 2 === 1
+  }
+
+  /**
+   * @param {number} clientid
+   */
+  hasAdminAccess (clientid) {
+    return (this.admin.get(clientid) || 0) % 2 === 1
+  }
+
+  get type () {
+    return OpGroupType
+  }
+
+  /**
+   * @param {encoding.Encoder} encoder
+   */
+  encode (encoder) {
+    encoding.writeVarUint(encoder, this.read.size)
+    this.read.forEach((perm,clientid) => {
+      encoding.writeVarUint(encoder, clientid)
+      encoding.writeVarUint(encoder, perm)
+    })
+    encoding.writeVarUint(encoder, this.write.size)
+    this.write.forEach((perm,clientid) => {
+      encoding.writeVarUint(encoder, clientid)
+      encoding.writeVarUint(encoder, perm)
+    })
+    encoding.writeVarUint(encoder, this.admin.size)
+    this.admin.forEach((perm,clientid) => {
+      encoding.writeVarUint(encoder, clientid)
+      encoding.writeVarUint(encoder, perm)
+    })
+  }
+
+  /**
+   * @param {decoding.Decoder} decoder
+   * @return {OpGroup}
+   */
+  static decode (decoder) {
+    const op = new OpGroup()
+    const sizeRead = decoding.readVarUint(decoder)
+    for (let i = 0; i < sizeRead; i++) {
+      const clientid = decoding.readVarUint(decoder)
+      const perm = decoding.readVarUint(decoder)
+      op.read.set(clientid, perm)
+    }
+    const sizeWrite = decoding.readVarUint(decoder)
+    for (let i = 0; i < sizeWrite; i++) {
+      const clientid = decoding.readVarUint(decoder)
+      const perm = decoding.readVarUint(decoder)
+      op.write.set(clientid, perm)
+    }
+    const sizeAdmin = decoding.readVarUint(decoder)
+    for (let i = 0; i < sizeAdmin; i++) {
+      const clientid = decoding.readVarUint(decoder)
+      const perm = decoding.readVarUint(decoder)
+      op.admin.set(clientid, perm)
+    }
+    return op
+  }
+
+  /**
+   * @param {Array<OpValue<OpGroup>>} ops
+   * @param {boolean} _gc
+   * @return {OpValue<OpGroup>}
+   */
+  static merge (ops, _gc) {
+    const mergedOp = ops[0].op
+    for (let i = 1; i < ops.length; i++) {
+      const op = ops[i]
+      op.op.read.forEach((perm, clientid) => {
+        mergedOp.read.set(clientid, math.max(mergedOp.read.get(clientid) || 0, perm))
+      })
+      op.op.write.forEach((perm, clientid) => {
+        mergedOp.write.set(clientid, math.max(mergedOp.write.get(clientid) || 0, perm))
+      })
+      op.op.admin.forEach((perm, clientid) => {
+        mergedOp.admin.set(clientid, math.max(mergedOp.admin.get(clientid) || 0, perm))
+      })
+    }
+    const lastOp = ops[ops.length - 1]
+    lastOp.op = mergedOp
+    return lastOp
+  }
+}
+
+/**
+ * An operation that is used as a placeholder until we request access again.
+ * @implements AbstractOp
+ */
+export class OpNoPermission {
+  get type () {
+    return OpNoPermissionType
+  }
+
+  /**
+   * @param {encoding.Encoder} _encoder
+   */
+  encode (_encoder) {}
+
+  /**
+   * @param {decoding.Decoder} _decoder
+   * @return {AbstractOp}
+   */
+  static decode (_decoder) {
+    return new OpNoPermission()
+  }
+
+  /**
+   * @param {Array<OpValue<OpNoPermission>>} ops
+   * @param {boolean} _gc
+   * @return {OpValue<OpNoPermission>}
+   */
+  static merge (ops, _gc) {
+    return ops[ops.length - 1]
+  }
+}
+
+/**
+ * An operation that is used as a placeholder until we request access again.
+ * @implements AbstractOp
+ */
+export class OpNoPermission {
+  get type () {
+    return OpNoPermissionType
+  }
+
+  /**
+   * @param {encoding.Encoder} _encoder
+   */
+  encode (_encoder) {}
+
+  /**
+   * @param {decoding.Decoder} _decoder
+   * @return {AbstractOp}
+   */
+  static decode (_decoder) {
+    return new OpNoPermission()
+  }
+
+  /**
+   * @param {Array<OpValue<OpNoPermission>>} ops
+   * @param {boolean} _gc
+   * @return {OpValue<OpNoPermission>}
+   */
+  static merge (ops, _gc) {
+    return ops[ops.length - 1]
+  }
+}
 
 /**
  * @implements AbstractOp
@@ -58,9 +262,47 @@ export class OpYjsUpdate {
   static decode (decoder) {
     return new OpYjsUpdate(decoding.readVarUint8Array(decoder))
   }
+
+  /**
+   * @param {Array<OpValue<OpYjsUpdate>>} ops
+   * @param {boolean} gc
+   * @return {OpValue<OpYjsUpdate>}
+   */
+  static merge (ops, gc) {
+    let update
+    if (gc) {
+      const ydoc = new Y.Doc()
+      ydoc.transact(() => {
+        for (let i = 0; i < ops.length; i++) {
+          Y.applyUpdateV2(ydoc, ops[i].op.update)
+        }
+      })
+      update = Y.encodeStateAsUpdateV2(ydoc)
+    } else {
+      update = Y.mergeUpdatesV2(ops.map(op => op.op.update))
+    }
+    const lastOp = ops[ops.length - 1]
+    lastOp.op = new OpYjsUpdate(update)
+    return lastOp
+  }
 }
 
 /**
+ * @type {Object<number,typeof AbstractOp>}
+ */
+const optypeMap = {
+  [OpYjsUpdateType]: OpYjsUpdate,
+  [OpNoPermissionType]: OpNoPermission
+}
+
+/**
+ * @param {number} type
+ * @return {typeof AbstractOp}
+ */
+export const optypeToConstructor = type => optypeMap[type]
+
+/**
+ * @template {AbstractOp} [OP=AbstractOp]
  * @implements isodb.IEncodable
  */
 export class OpValue {
@@ -69,7 +311,7 @@ export class OpValue {
    * @param {number} clock
    * @param {string} collection
    * @param {string} doc
-   * @param {AbstractOp} op
+   * @param {OP} op
    */
   constructor (client, clock, collection, doc, op) {
     this.client = client
@@ -101,16 +343,7 @@ export class OpValue {
     const clientClockFkey = decoding.readVarUint(decoder)
     const collection = decoding.readVarString(decoder)
     const doc = decoding.readVarString(decoder)
-    let op
-    switch (type) {
-      case OpYjsUpdateType: {
-        op = OpYjsUpdate.decode(decoder)
-        break
-      }
-      /* c8 ignore next 2 */
-      default:
-        error.unexpectedCase()
-    }
+    const op = optypeToConstructor(type).decode(decoder)
     return new OpValue(clientFkey, clientClockFkey, collection, doc, op)
   }
 }
@@ -255,7 +488,7 @@ export class ClocksKey {
   constructor (clientid, collection, doc) {
     this.clientid = clientid
     this.collection = collection
-    this.doc = doc
+    this.doc = doc // @todo remove: we probably don't need this
   }
 
   /**
