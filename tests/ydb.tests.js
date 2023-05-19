@@ -1,10 +1,11 @@
 import * as t from 'lib0/testing'
 import * as Ydb from '../src/index.js'
-import * as Y from 'yjs' // eslint-disable-line
+import * as Y from 'yjs'
 import * as utils from '../src/utils.js'
 import * as promise from 'lib0/promise'
 import * as array from 'lib0/array'
-import * as db from '../src/db.js'
+import * as dbtypes from '../src/dbtypes.js'
+import * as actions from '../src/actions.js'
 
 /**
  * @param {Y.Doc} ydoc1
@@ -30,16 +31,16 @@ const emptyUpdate = Y.encodeStateAsUpdateV2(new Y.Doc())
 export const testBasic = async tc => {
   await Ydb.deleteYdb(getDbName(tc.testName))
   const y = await Ydb.openYdb(getDbName(tc.testName))
-  y.addUpdate('collection', 'docname', emptyUpdate)
-  y.addUpdate('collection', 'docname', emptyUpdate)
-  y.addUpdate('collection', 'docname', emptyUpdate)
-  y.addUpdate('collection2', 'docname', emptyUpdate)
-  y.addUpdate('collection', 'docname2', emptyUpdate)
-  const docOps = await db.getDocOps(y, 'collection', 'docname', 0)
+  actions.addYjsUpdate(y, 'collection', 'docname', emptyUpdate)
+  actions.addYjsUpdate(y, 'collection', 'docname', emptyUpdate)
+  actions.addYjsUpdate(y, 'collection', 'docname', emptyUpdate)
+  actions.addYjsUpdate(y, 'collection2', 'docname', emptyUpdate)
+  actions.addYjsUpdate(y, 'collection', 'docname2', emptyUpdate)
+  const docOps = await actions.getDocOps(y, 'collection', 'docname', dbtypes.OpYjsUpdateType, 0)
   t.assert(docOps.length === 3)
-  const allOps = await db.getOps(y, 0)
+  const allOps = await actions.getOps(y, 0)
   t.assert(allOps.length === 3) // because doc ops are merged
-  const collectionOps = await db.getCollectionOps(y, 'collection', 0)
+  const collectionOps = await actions.getCollectionOps(y, 'collection', 0)
   t.assert(collectionOps.length === 2)
 }
 
@@ -120,10 +121,10 @@ export const testComm = async tc => {
   const ydoc3 = ydb3.getYdoc('collection', 'ydoc')
   await ydoc3.whenLoaded
   t.compare(ydoc3.getMap().get('k'), 'v2')
-  console.log(await ydb1.getClocks(), 'clientid: ', ydb1.clientid)
-  console.log(await ydb2.getClocks(), 'clientid: ', ydb2.clientid)
-  console.log(await ydb3.getClocks(), 'clientid: ', ydb3.clientid)
-  console.log('updates', ydb1.clientid, await db.getDocOps(ydb1, 'collection', 'ydoc', 0))
-  console.log('updates 2', ydb2.clientid, await db.getDocOps(ydb2, 'collection', 'ydoc', 0))
-  console.log('updates 3', ydb3.clientid, await db.getDocOps(ydb3, 'collection', 'ydoc', 0))
+  console.log(await actions.getClocks(ydb1), 'clientid: ', ydb1.clientid)
+  console.log(await actions.getClocks(ydb2), 'clientid: ', ydb2.clientid)
+  console.log(await actions.getClocks(ydb3), 'clientid: ', ydb3.clientid)
+  console.log('updates', ydb1.clientid, await actions.getDocOps(ydb1, 'collection', 'ydoc', dbtypes.OpYjsUpdateType, 0))
+  console.log('updates 2', ydb2.clientid, await actions.getDocOps(ydb2, 'collection', 'ydoc', dbtypes.OpYjsUpdateType, 0))
+  console.log('updates 3', ydb3.clientid, await actions.getDocOps(ydb3, 'collection', 'ydoc', dbtypes.OpYjsUpdateType, 0))
 }

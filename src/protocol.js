@@ -3,8 +3,8 @@ import * as dbtypes from './dbtypes.js'
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import * as error from 'lib0/error'
-import * as db from './db.js'
 import * as array from 'lib0/array'
+import * as actions from './actions.js'
 
 const messageOps = 0
 const messageRequestOps = 1
@@ -56,7 +56,7 @@ export const writeSynced = (encoder, nextClock) => {
  */
 const readRequestOps = async (encoder, decoder, ydb) => {
   const clock = decoding.readVarUint(decoder)
-  const ops = await db.getOps(ydb, clock)
+  const ops = await actions.getOps(ydb, clock)
   writeOps(encoder, ops)
   writeSynced(encoder, ops.length > 0 ? ops[ops.length - 1].clock + 1 : 0)
 }
@@ -77,7 +77,7 @@ const readOps = (decoder, ydb, comm) => {
     ops.push(op)
   }
   console.log(ydb.dbname, 'applying ops', ops)
-  return ydb.applyOps(ops, comm.synced)
+  return actions.applyRemoteOps(ydb, ops, comm.synced)
 }
 
 /**

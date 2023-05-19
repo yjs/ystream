@@ -2,8 +2,8 @@ import * as Y from 'yjs'
 import * as bc from 'lib0/broadcastchannel'
 import * as buffer from 'lib0/buffer'
 import * as env from 'lib0/environment'
-import * as db from './db.js'
 import * as dbtypes from './dbtypes.js'
+import * as actions from './actions.js'
 
 /**
  * @typedef {import('./index.js').Ydb} Ydb
@@ -28,7 +28,7 @@ export const bindydoc = async (ydb, collection, doc, ydoc) => {
         // @todo iterate through opened documents in ydb and apply update
         // Thought: iterating through the docs should be the default
       }
-      ydb.addUpdate(collection, doc, update)
+      actions.addYjsUpdate(ydb, collection, doc, update)
     }
   })
   /* c8 ignore start */
@@ -43,7 +43,7 @@ export const bindydoc = async (ydb, collection, doc, ydoc) => {
     })
   }
   /* c8 ignore end */
-  const updates = await db.getDocOps(ydb, collection, doc, 0) // currentClock
+  const updates = await actions.getDocOps(ydb, collection, doc, dbtypes.OpYjsUpdateType, 0) // currentClock
   Y.transact(ydoc, () => {
     updates.forEach(update => {
       if (update.op.type === dbtypes.OpYjsUpdateType) {
