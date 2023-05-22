@@ -26,6 +26,14 @@ export const def = {
            */
           mapper: (k, v) => new dbtypes.CollectionKey(v.collection, k.v),
           key: dbtypes.CollectionKey
+        },
+        noperm: {
+          /**
+           * @param {isodb.AutoKey} k
+           * @param {dbtypes.OpValue} v
+           */
+          mapper: (k, v) => v.op.type === dbtypes.OpPermType ? new dbtypes.NoPermissionIndexKey(v.collection, k.v, v.doc) : null,
+          key: dbtypes.NoPermissionIndexKey
         }
       }
     },

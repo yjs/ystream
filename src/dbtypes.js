@@ -5,6 +5,10 @@ import * as isodb from 'isodb'
 import * as Y from 'yjs'
 import * as math from 'lib0/math'
 
+export const OpYjsUpdateType = 0
+export const OpNoPermissionType = 1
+export const OpPermType = 2
+
 export class AbstractOp {
   /**
    * @param {any} _anyarg
@@ -44,10 +48,6 @@ export class AbstractOp {
     error.methodUnimplemented()
   }
 }
-
-export const OpYjsUpdateType = 0
-export const OpNoPermissionType = 1
-export const OpPermType = 2
 
 /**
  * An operation that contains information about which users have access to a document.
@@ -484,5 +484,38 @@ export class DocKey {
     const type = decoding.readUint16(decoder)
     const opid = decoding.readUint32(decoder)
     return new DocKey(collection, doc, type, opid)
+  }
+}
+
+export class NoPermissionIndexKey {
+  /**
+   * @param {string} collection
+   * @param {string} doc
+   * @param {number} clock
+   */
+  constructor (collection, doc, clock) {
+    this.collection = collection
+    this.doc = doc
+    this.clock = clock
+  }
+
+  /**
+   * @param {encoding.Encoder} encoder
+   */
+  encode (encoder) {
+    encoding.writeVarString(encoder, this.collection)
+    encoding.writeVarString(encoder, this.doc)
+    encoding.writeUint32(encoder, this.clock)
+  }
+
+  /**
+   * @param {decoding.Decoder} decoder
+   * @return {isodb.IEncodable}
+   */
+  static decode (decoder) {
+    const collection = decoding.readVarString(decoder)
+    const doc = decoding.readVarString(decoder)
+    const clock = decoding.readUint32(decoder)
+    return new NoPermissionIndexKey(collection, doc, clock)
   }
 }

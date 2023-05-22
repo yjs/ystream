@@ -63,6 +63,7 @@ export const getCollectionOps = async (ydb, collection, clock) => {
  * @param {string} doc
  * @param {number} type
  * @param {number} clock
+ * @return {Promise<Array<dbtypes.OpValue<any>>>}
  */
 export const getDocOps = async (ydb, collection, doc, type, clock) => {
   const entries = await ydb.db.transact(tr =>
@@ -83,6 +84,54 @@ export const getDocOps = async (ydb, collection, doc, type, clock) => {
   })
   return updateOpClocks(ydb, entries)
 }
+
+/**
+ * @param {Ydb} ydb
+ * @param {string} collection
+ * @param {string} doc
+ * @return {Promise<Array<dbtypes.OpValue<dbtypes.OpYjsUpdate>>>}
+ */
+export const getDocYjsUpdates = async (ydb, collection, doc) => getDocOps(ydb, collection, doc, dbtypes.OpYjsUpdateType, 0)
+
+/**
+ * @param {Ydb} ydb
+ * @param {string} collection
+ * @param {string} doc
+ * @return {Promise<dbtypes.OpValue<dbtypes.OpPerm>>}
+ */
+export const getDocPerm = async (ydb, collection, doc) => getDocOps(ydb, collection, doc, dbtypes.OpPermType, 0).then(ops => utils.mergeOps(ops, false)[0])
+
+/**
+ * @param {Array<dbtypes.NoPermissionIndexKey>} noperms
+ */
+const filterDuplicateNoPermIndexes = noperms => {
+  const visited = new Set()
+  /**
+   * @type {Array<dbtypes.NoPermissionIndexKey>}
+   */
+  const result = []
+  for (let i = noperms.length - 1; i >= 0; i--) {
+    const p = noperms[i]
+    if (visited.has(p.doc)) continue
+    visited.add(p.doc)
+    result.push(p)
+  }
+  return result
+}
+
+/**
+ * Returns up to N documents that we don't have permission to. Only the first entry for each doc is
+ * returned.
+ *
+ * @param {Ydb} ydb
+ * @param {string} collection
+ * @return {Promise<Array<dbtypes.NoPermissionIndexKey>>}
+ */
+export const getNoPerms = async (ydb, collection) =>
+  ydb.db.transact(tr =>
+    tr.tables.oplog.indexes.noperm.getKeys({ start: new dbtypes.NoPermissionIndexKey(collection, '', 0) })
+      .then(ks => filterDuplicateNoPermIndexes(ks || []))
+  )
 
 /**
  * @param {Ydb} ydb
@@ -132,11 +181,11 @@ export const confirmClientClock = async (ydb, clientid, collection, doc, newCloc
  * @param {Ydb} ydb
  * @param {string} collection
  * @param {string} doc
- * @param {Uint8Array} update
+ * @param {dbtypes.AbstractOp} opv
  */
-export const addYjsUpdate = async (ydb, collection, doc, update) => {
+export const addOp = async (ydb, collection, doc, opv) => {
   const op = await ydb.db.transact(async tr => {
-    const op = new dbtypes.OpValue(ydb.clientid, 0, collection, doc, new dbtypes.OpYjsUpdate(update))
+    const op = new dbtypes.OpValue(ydb.clientid, 0, collection, doc, opv)
     const key = await tr.tables.oplog.add(op)
     op.clock = key.v
     tr.tables.clocks.set(op.client, new dbtypes.ClientClockValue(op.clock, op.clock))
@@ -146,6 +195,22 @@ export const addYjsUpdate = async (ydb, collection, doc, update) => {
     comm.broadcast([op])
   })
 }
+
+/**
+ * @param {Ydb} ydb
+ * @param {string} collection
+ * @param {string} doc
+ * @param {Uint8Array} update
+ */
+export const addYjsUpdate = async (ydb, collection, doc, update) => addOp(ydb, collection, doc, new dbtypes.OpYjsUpdate(update))
+
+/**
+ * @param {Ydb} ydb
+ * @param {string} collection
+ * @param {string} doc
+ * @param {dbtypes.OpPerm} perm
+ */
+export const addPermissionChange = async (ydb, collection, doc, perm) => addOp(ydb, collection, doc, perm)
 
 /**
  * @param {Ydb} ydb

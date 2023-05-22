@@ -6,8 +6,10 @@ import * as array from 'lib0/array'
 /**
  * Merges ops on the same collection & doc
  *
- * @param {Array<dbtypes.OpValue>} ops
+ * @template {dbtypes.AbstractOp} OP
+ * @param {Array<dbtypes.OpValue<OP>>} ops
  * @param {boolean} gc
+ * @return {Array<dbtypes.OpValue<OP>>}
  */
 const _mergeOpsHelper = (ops, gc) => {
   /**
@@ -19,7 +21,7 @@ const _mergeOpsHelper = (ops, gc) => {
     map.setIfUndefined(opsSortedByType, op.op.type, array.create).push(op)
   }
   /**
-   * @type {Array<dbtypes.OpValue>}
+   * @type {Array<dbtypes.OpValue<any>>}
    */
   const mergedOps = []
   opsSortedByType.forEach((sops, type) => { mergedOps.push(dbtypes.optypeToConstructor(type).merge(sops, gc)) })
@@ -27,13 +29,14 @@ const _mergeOpsHelper = (ops, gc) => {
 }
 
 /**
- * @param {Array<dbtypes.OpValue>} ops
+ * @template {dbtypes.AbstractOp} OP
+ * @param {Array<dbtypes.OpValue<OP>>} ops
  * @param {boolean} gc
- * @return {Array<dbtypes.OpValue>}
+ * @return {Array<dbtypes.OpValue<OP>>}
  */
 export const mergeOps = (ops, gc) => {
   /**
-   * @type {Map<string, Map<string, Array<dbtypes.OpValue>>>}
+   * @type {Map<string, Map<string, Array<dbtypes.OpValue<OP>>>>}
    */
   const collections = new Map()
   // Iterate from right to left so we add the "latest" ops first to the collection.
@@ -43,7 +46,7 @@ export const mergeOps = (ops, gc) => {
     map.setIfUndefined(map.setIfUndefined(collections, op.collection, map.create), op.doc, array.create).push(op)
   }
   /**
-   * @type {Array<dbtypes.OpValue>}
+   * @type {Array<dbtypes.OpValue<OP>>}
    */
   const mergedOps = []
   collections.forEach(docs => {
