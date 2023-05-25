@@ -84,8 +84,10 @@ class MockCommInstance {
     this.ydb = ydb
     ydb.comms.add(this)
     localInstances.forEach(comm => {
-      comm.receive(protocol.encodeMessage(encoder => protocol.writeRequestOps(encoder, 0)), this)
-      this.receive(protocol.encodeMessage(encoder => protocol.writeRequestOps(encoder, 0)), comm)
+      ydb.collections.forEach((_c, collectionName) => {
+        comm.receive(encoding.encode(encoder => protocol.writeRequestOps(encoder, collectionName, 0)), this)
+        this.receive(encoding.encode(encoder => protocol.writeRequestOps(encoder, collectionName, 0)), comm)
+      })
     })
     localInstances.add(this)
   }
@@ -99,7 +101,7 @@ class MockCommInstance {
    * @param {Array<OpValue>} ops
    */
   broadcast (ops) {
-    const message = protocol.encodeMessage(encoder => protocol.writeOps(encoder, ops))
+    const message = encoding.encode(encoder => protocol.writeOps(encoder, ops))
     localInstances.forEach(comm => {
       // @todo dont broadcast to yourself
       comm.receive(message, this)

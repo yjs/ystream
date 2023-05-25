@@ -11,24 +11,6 @@ const messageRequestOps = 1
 const messageSynced = 2
 
 /**
- * @param {function(encoding.Encoder):void} f
- */
-export const encodeMessage = (f) => {
-  const encoder = encoding.createEncoder()
-  f(encoder)
-  return encoding.toUint8Array(encoder)
-}
-
-/**
- * @param {encoding.Encoder} encoder
- * @param {number} clock
- */
-export const writeRequestOps = (encoder, clock) => {
-  encoding.writeUint8(encoder, messageRequestOps)
-  encoding.writeVarUint(encoder, clock)
-}
-
-/**
  * @param {encoding.Encoder} encoder
  * @param {Array<dbtypes.OpValue>} ops
  */
@@ -38,27 +20,6 @@ export const writeOps = (encoder, ops) => {
   ops.forEach(op => {
     op.encode(encoder)
   })
-}
-
-/**
- * @param {encoding.Encoder} encoder
- * @param {number} nextClock
- */
-export const writeSynced = (encoder, nextClock) => {
-  encoding.writeUint8(encoder, messageSynced)
-  encoding.writeVarUint(encoder, nextClock)
-}
-
-/**
- * @param {encoding.Encoder} encoder
- * @param {decoding.Decoder} decoder
- * @param {Ydb} ydb
- */
-const readRequestOps = async (encoder, decoder, ydb) => {
-  const clock = decoding.readVarUint(decoder)
-  const ops = await actions.getOps(ydb, clock)
-  writeOps(encoder, ops)
-  writeSynced(encoder, ops.length > 0 ? ops[ops.length - 1].clock + 1 : 0)
 }
 
 /**
@@ -73,11 +34,62 @@ const readOps = (decoder, ydb, comm) => {
    */
   const ops = []
   for (let i = 0; i < numOfOps; i++) {
-    const op = /** @type {dbtypes.OpValue} */ (dbtypes.OpValue.decode(decoder))
-    ops.push(op)
+    ops.push(/** @type {dbtypes.OpValue} */ (dbtypes.OpValue.decode(decoder)))
   }
   console.log(ydb.dbname, 'applying ops', ops)
   return actions.applyRemoteOps(ydb, ops, comm.synced)
+}
+
+/**
+ * @param {encoding.Encoder} encoder
+ * @param {string} collection
+ * @param {number} nextClock
+ */
+export const writeSynced = (encoder, collection, nextClock) => {
+  encoding.writeUint8(encoder, messageSynced)
+  encoding.writeVarString(encoder, collection)
+  encoding.writeVarUint(encoder, nextClock)
+}
+
+/**
+ * @param {encoding.Encoder} _encoder
+ * @param {decoding.Decoder} decoder
+ * @param {Ydb} ydb
+ * @param {import('./comm.js').Comm} comm
+ */
+const readSynced = async (_encoder, decoder, ydb, comm) => {
+  decoding.readVarString(decoder) // collection
+  decoding.readVarUint(decoder) // confirmed clock
+  comm.synced = true
+  // @todo this should only fire sync if all Comms are synced
+  if (array.from(ydb.comms.values()).every(comm => comm.synced)) {
+    console.log(ydb.dbname, 'synced')
+    ydb.emit('sync', [])
+  }
+}
+
+/**
+ * @param {encoding.Encoder} encoder
+ * @param {string} collection
+ * @param {number} clock
+ */
+export const writeRequestOps = (encoder, collection, clock) => {
+  encoding.writeUint8(encoder, messageRequestOps)
+  encoding.writeVarString(encoder, collection)
+  encoding.writeVarUint(encoder, clock)
+}
+
+/**
+ * @param {encoding.Encoder} encoder
+ * @param {decoding.Decoder} decoder
+ * @param {Ydb} ydb
+ */
+const readRequestOps = async (encoder, decoder, ydb) => {
+  const collection = decoding.readVarString(decoder)
+  const clock = decoding.readVarUint(decoder)
+  const ops = await actions.getCollectionOps(ydb, collection, clock)
+  writeOps(encoder, ops)
+  writeSynced(encoder, collection, ops.length > 0 ? ops[ops.length - 1].clock + 1 : 0)
 }
 
 /**
@@ -99,13 +111,7 @@ export const readMessage = async (decoder, ydb, comm) => {
         break
       }
       case messageSynced: {
-        decoding.readVarUint(decoder)
-        comm.synced = true
-        // @todo this should only fire sync if all Comms are synced
-        if (array.from(ydb.comms.values()).every(comm => comm.synced)) {
-          console.log(ydb.dbname, 'synced')
-          ydb.emit('sync', [])
-        }
+        await readSynced(encoder, decoder, ydb, comm)
         break
       }
       /* c8 ignore next 3 */

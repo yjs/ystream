@@ -10,6 +10,8 @@ import * as isodb from 'isodb'
 import * as Y from 'yjs'
 import * as dbtypes from './dbtypes.js'
 import * as utils from './utils.js'
+import * as encoding from 'lib0/encoding'
+import * as decoding from 'lib0/decoding'
 
 /**
  * @typedef {import('./ydb.js').Ydb} Ydb
@@ -94,6 +96,8 @@ export const getDocOps = async (ydb, collection, doc, type, clock) => {
 export const getDocYjsUpdates = async (ydb, collection, doc) => getDocOps(ydb, collection, doc, dbtypes.OpYjsUpdateType, 0)
 
 /**
+ * @todo these kinds of requests can be chached
+ *
  * @param {Ydb} ydb
  * @param {string} collection
  * @param {string} doc
@@ -137,9 +141,8 @@ export const getNoPerms = async (ydb, collection) =>
  * @param {Ydb} ydb
  * @param {number} clientid
  * @param {string?} collection
- * @param {string?} doc
  */
-export const getClock = async (ydb, clientid, collection, doc) =>
+export const getClock = async (ydb, clientid, collection) =>
   ydb.db.transact(async tr => {
     if (ydb.clientid === clientid) {
       const latestEntry = await tr.tables.oplog.getKeys({
@@ -151,10 +154,9 @@ export const getClock = async (ydb, clientid, collection, doc) =>
     }
     const clocksTable = tr.tables.clocks
     const queries = [
-      clocksTable.get(new dbtypes.ClocksKey(clientid, null, null))
+      clocksTable.get(new dbtypes.ClocksKey(clientid, null))
     ]
-    collection && queries.push(clocksTable.get(new dbtypes.ClocksKey(clientid, collection, null)))
-    doc && queries.push(clocksTable.get(new dbtypes.ClocksKey(clientid, collection, doc)))
+    collection && queries.push(clocksTable.get(new dbtypes.ClocksKey(clientid, collection)))
     const clocks = await promise.all(queries)
     return array.fold(clocks.map(c => c ? c.clock : 0), 0, math.max)
   })
@@ -165,14 +167,14 @@ export const getClock = async (ydb, clientid, collection, doc) =>
  * @param {Ydb} ydb
  * @param {number} clientid
  * @param {string?} collection
- * @param {string?} doc
  * @param {number} newClock
+ * @param {number} localClock
  */
-export const confirmClientClock = async (ydb, clientid, collection, doc, newClock) => {
+export const confirmClientClock = async (ydb, clientid, collection, newClock, localClock) => {
   ydb.db.transact(async tr => {
-    const currClock = await getClock(ydb, clientid, collection, doc)
+    const currClock = await getClock(ydb, clientid, collection)
     if (currClock < newClock) {
-      tr.tables.clocks.set(new dbtypes.ClocksKey(clientid, collection, doc), newClock)
+      tr.tables.clocks.set(new dbtypes.ClocksKey(clientid, collection), new dbtypes.ClientClockValue(newClock, localClock))
     }
   })
 }
@@ -188,7 +190,7 @@ export const addOp = async (ydb, collection, doc, opv) => {
     const op = new dbtypes.OpValue(ydb.clientid, 0, collection, doc, opv)
     const key = await tr.tables.oplog.add(op)
     op.clock = key.v
-    tr.tables.clocks.set(op.client, new dbtypes.ClientClockValue(op.clock, op.clock))
+    tr.tables.clocks.set(new dbtypes.ClocksKey(op.client, collection), new dbtypes.ClientClockValue(op.clock, op.clock))
     return op
   })
   ydb.comms.forEach(comm => {
@@ -243,34 +245,38 @@ export const getClocks = ydb =>
 export const applyRemoteOps = (ydb, ops, shouldFilter) => {
   const p = ydb.db.transact(async tr => {
     /**
-     * Maps from clientid to clock
-     * @type {Map<number,number>}
+     * Maps from encoded(collection/doc/clientid) to clock
+     * @type {Map<string,number>}
      */
     const clocks = new Map()
-    // wait for all clock requests
-    await promise.all(array.uniqueBy(ops, op => op.client).map(op =>
-      tr.tables.clocks.get(op.client).then(clock => {
-        clock && clocks.set(op.client, clock.clock)
-      })
-    ))
     /**
-     * @type {Map<number,dbtypes.ClientClockValue>}
+     * @param {number} client
+     * @param {string} collection
+     */
+    const encodeClocksKey = (client, collection) => buffer.toBase64(encoding.encode(encoder => new dbtypes.ClocksKey(client, collection).encode(encoder)))
+    // wait for all clock requests
+    await promise.all(array.uniqueBy(ops, op => op.client).map(async op => {
+      const clock = await getClock(ydb, op.client, op.collection)
+      clock > 0 && clocks.set(encodeClocksKey(op.client, op.collection), clock)
+    }))
+    /**
+     * @type {Map<string,dbtypes.ClientClockValue>}
      */
     const clientClockEntries = new Map()
     // 1. Filter ops that have already been applied 2. apply ops 3. update clocks table
-    await promise.all((!shouldFilter ? ops : ops.filter(op => op.clock >= (clocks.get(op.client) || 0))).map(op =>
-      tr.tables.oplog.add(op).then(localClock => {
-        clientClockEntries.set(op.client, new dbtypes.ClientClockValue(op.clock, localClock.v))
-      })
-    ))
-    clientClockEntries.forEach((clockValue, client) => {
-      tr.tables.clocks.set(client, clockValue)
+    await promise.all((!shouldFilter ? ops : ops.filter(op => op.clock >= (clocks.get(encodeClocksKey(op.client, op.collection)) || 0))).map(async op => {
+      const localClock = await tr.tables.oplog.add(op)
+      clientClockEntries.set(encodeClocksKey(op.client, op.collection), new dbtypes.ClientClockValue(op.clock, localClock.v))
+    }))
+    clientClockEntries.forEach((clockValue, encClocksKey) => {
+      const clocksKey = dbtypes.ClocksKey.decode(decoding.createDecoder(buffer.fromBase64(encClocksKey)))
+      tr.tables.clocks.set(clocksKey, clockValue)
     })
     console.log(ydb.dbname, 'wrote ops', ops)
   })
   /**
-     * @type {Map<string, Map<string, Array<dbtypes.OpValue>>>}
-     */
+   * @type {Map<string, Map<string, Array<dbtypes.OpValue>>>}
+   */
   const sorted = new Map()
   ops.forEach(op => {
     map.setIfUndefined(map.setIfUndefined(sorted, op.collection, map.create), op.doc, () => /** @type {Array<dbtypes.OpValue>} */ ([])).push(op)

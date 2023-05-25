@@ -17,11 +17,12 @@ import * as random from 'lib0/random'
  */
 export class Ydb extends Observable {
   /**
+   * @param {Array<string>} collections
    * @param {string} dbname
    * @param {isodb.IDB<typeof db.def>} _db
    * @param {YdbConf} conf
    */
-  constructor (dbname, _db, { comms = [] } = {}) {
+  constructor (collections, dbname, _db, { comms = [] } = {}) {
     super()
     this.dbname = dbname
     /**
@@ -32,6 +33,7 @@ export class Ydb extends Observable {
      * @type {Map<string,Map<string,Set<Y.Doc>>>}
      */
     this.collections = new Map()
+    collections.forEach(collectionName => { this.collections.set(collectionName, new Map()) })
     /**
      * @type {Set<import('./comm.js').Comm>}
      */
@@ -50,7 +52,8 @@ export class Ydb extends Observable {
    * @param {string} docname
    */
   getYdoc (collection, docname) {
-    const col = map.setIfUndefined(this.collections, collection, () => new Map())
+    const col = this.collections.get(collection)
+    if (col == null) { throw new Error('Collection was not specified') }
     const docset = map.setIfUndefined(col, docname, () => new Set())
     const ydoc = new Y.Doc({
       guid: `${collection}#${docname}`

@@ -366,7 +366,7 @@ export class ClientClockValue {
 
   /**
    * @param {decoding.Decoder} decoder
-   * @return {isodb.IEncodable}
+   * @return {ClientClockValue}
    */
   static decode (decoder) {
     const clock = decoding.readVarUint(decoder)
@@ -415,35 +415,31 @@ export class ClocksKey {
   /**
    * @param {number} clientid
    * @param {string?} collection
-   * @param {string?} doc
    */
-  constructor (clientid, collection, doc) {
+  constructor (clientid, collection) {
     this.clientid = clientid
     this.collection = collection
-    this.doc = doc // @todo remove: we probably don't need this
   }
 
   /**
    * @param {encoding.Encoder} encoder
    */
   encode (encoder) {
-    const info = (this.collection ? 1 : 0) + (this.doc ? 2 : 0)
+    const info = (this.collection ? 1 : 0)
     encoding.writeUint8(encoder, info)
     encoding.writeUint32(encoder, this.clientid)
     this.collection && encoding.writeVarString(encoder, this.collection)
-    this.doc && encoding.writeVarString(encoder, this.doc)
   }
 
   /**
    * @param {decoding.Decoder} decoder
-   * @return {isodb.IEncodable}
+   * @return {ClocksKey}
    */
   static decode (decoder) {
     const info = decoding.readUint8(decoder)
     const clientid = decoding.readUint32(decoder)
     const collection = (info & 1) > 0 ? decoding.readVarString(decoder) : null
-    const doc = (info & 2) > 0 ? decoding.readVarString(decoder) : null
-    return new ClocksKey(clientid, collection, doc)
+    return new ClocksKey(clientid, collection)
   }
 }
 

@@ -32,7 +32,7 @@ export const def = {
            * @param {isodb.AutoKey} k
            * @param {dbtypes.OpValue} v
            */
-          mapper: (k, v) => v.op.type === dbtypes.OpPermType ? new dbtypes.NoPermissionIndexKey(v.collection, k.v, v.doc) : null,
+          mapper: (k, v) => v.op.type === dbtypes.OpPermType ? new dbtypes.NoPermissionIndexKey(v.collection, v.doc, k.v) : null,
           key: dbtypes.NoPermissionIndexKey
         }
       }

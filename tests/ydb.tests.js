@@ -30,7 +30,7 @@ const emptyUpdate = Y.encodeStateAsUpdateV2(new Y.Doc())
  */
 export const testBasic = async tc => {
   await Ydb.deleteYdb(getDbName(tc.testName))
-  const y = await Ydb.openYdb(getDbName(tc.testName))
+  const y = await Ydb.openYdb(getDbName(tc.testName), ['collection', 'collection2'])
   actions.addYjsUpdate(y, 'collection', 'docname', emptyUpdate)
   actions.addYjsUpdate(y, 'collection', 'docname', emptyUpdate)
   actions.addYjsUpdate(y, 'collection', 'docname', emptyUpdate)
@@ -71,7 +71,7 @@ export const testMergeOps = (_tc) => {
  */
 export const testYdocSync = async tc => {
   await Ydb.deleteYdb(getDbName(tc.testName))
-  const ydb = await Ydb.openYdb(getDbName(tc.testName))
+  const ydb = await Ydb.openYdb(getDbName(tc.testName), ['collection'])
   const ydoc1 = ydb.getYdoc('collection', 'doc1')
   await ydoc1.whenLoaded
   ydoc1.getMap().set('k', 'v')
@@ -83,7 +83,7 @@ export const testYdocSync = async tc => {
   console.log('before destroy')
   await ydb.destroy()
   console.log('after destroy')
-  const ydb2 = await Ydb.openYdb(getDbName(tc.testName))
+  const ydb2 = await Ydb.openYdb(getDbName(tc.testName), ['collection'])
   console.log('after open')
   const ydoc3 = ydb2.getYdoc('collection', 'doc1')
   console.log('after getdoc')
@@ -99,10 +99,10 @@ export const testComm = async tc => {
   await Ydb.deleteYdb(getDbName(tc.testName))
   await Ydb.deleteYdb(getDbName(tc.testName) + '-2')
   await Ydb.deleteYdb(getDbName(tc.testName) + '-3')
-  const ydb1 = await Ydb.openYdb(getDbName(tc.testName), {
+  const ydb1 = await Ydb.openYdb(getDbName(tc.testName), ['collection'], {
     comms: [new Ydb.MockComm()]
   })
-  const ydb2 = await Ydb.openYdb(getDbName(tc.testName) + '-2', {
+  const ydb2 = await Ydb.openYdb(getDbName(tc.testName) + '-2', ['collection'], {
     comms: [new Ydb.MockComm()]
   })
   await promise.all([ydb1.whenSynced, ydb2.whenSynced])
@@ -114,7 +114,7 @@ export const testComm = async tc => {
   t.compare(ydoc2.getMap().get('k'), 'v1')
   ydoc1.getMap().set('k', 'v2')
   t.compare(ydoc1.getMap().get('k'), 'v2')
-  const ydb3 = await Ydb.openYdb(getDbName(tc.testName) + '-3', {
+  const ydb3 = await Ydb.openYdb(getDbName(tc.testName) + '-3', ['collection'], {
     comms: [new Ydb.MockComm()]
   })
   await ydb3.whenSynced
