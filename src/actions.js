@@ -9,6 +9,7 @@ import * as promise from 'lib0/promise'
 import * as isodb from 'isodb'
 import * as Y from 'yjs'
 import * as dbtypes from './dbtypes.js'
+import * as operations from './operations.js'
 import * as utils from './utils.js'
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
@@ -19,9 +20,25 @@ import * as decoding from 'lib0/decoding'
 
 /**
  * @param {Ydb} ydb
+ * @param {string} collection
+ */
+export const getUnsyncedDocs = (ydb, collection) => ydb.db.transact(async tr => {
+  const ud = await tr.tables.unsyncedDocs.getKeys({ start: new dbtypes.UnsyncedKey(collection, ''), end: new dbtypes.UnsyncedKey(collection, null) })
+  const ds = await promise.all(ud.map(async u => {
+    const np = await getLastNoPerm(ydb, collection, /** @type {string} */ (u.doc))
+    if (np == null) {
+      await tr.tables.unsyncedDocs.remove(u)
+    }
+    return np
+  }))
+  return /** @type {Array<dbtypes.OpValue<operations.OpNoPermission>>} */ (ds.filter(d => d !== null))
+})
+
+/**
+ * @param {Ydb} ydb
  * @param {Array<{ value: dbtypes.OpValue, fkey: isodb.AutoKey }>} updates
  */
-const updateOpClocks = (ydb, updates) => updates.map(update => {
+const _updateOpClocksHelper = (ydb, updates) => updates.map(update => {
   if (update.value.client === ydb.clientid) {
     update.value.clock = update.fkey.v
   }
@@ -53,10 +70,10 @@ export const getCollectionOps = async (ydb, collection, clock) => {
   const ops = await ydb.db.transact(tr =>
     tr.tables.oplog.indexes.collection.getEntries({
       start: new dbtypes.CollectionKey(collection, clock),
-      end: new dbtypes.CollectionKey(collection, number.HIGHEST_INT32) // @todo should use number.HIGHEST_UINT32
+      end: new dbtypes.CollectionKey(collection, number.HIGHEST_UINT32) // @todo should use number.HIGHEST_UINT32
     })
   )
-  return utils.mergeOps(updateOpClocks(ydb, ops), clock === 0)
+  return utils.mergeOps(_updateOpClocksHelper(ydb, ops), clock === 0)
 }
 
 /**
@@ -70,30 +87,47 @@ export const getCollectionOps = async (ydb, collection, clock) => {
 export const getDocOps = async (ydb, collection, doc, type, clock) => {
   const entries = await ydb.db.transact(tr =>
     tr.tables.oplog.indexes.doc.getEntries({
-      start: new dbtypes.DocKey(collection, doc, type, clock),
-      end: new dbtypes.DocKey(collection, doc, type, number.HIGHEST_INT32)// @todo should use number.HIGHEST_UINT32
+      start: new dbtypes.DocKey(type, collection, doc, clock),
+      end: new dbtypes.DocKey(type, collection, doc, number.HIGHEST_UINT32)
     })
   )
-  /**
-   * @type {Array<dbtypes.OpValue>}
-   */
-  const updates = []
-  entries.forEach(entry => {
-    if (entry.value.client === ydb.clientid) {
-      entry.value.clock = entry.fkey.v
-    }
-    updates.push(entry.value)
-  })
-  return updateOpClocks(ydb, entries)
+  return _updateOpClocksHelper(ydb, entries)
 }
 
 /**
  * @param {Ydb} ydb
  * @param {string} collection
  * @param {string} doc
- * @return {Promise<Array<dbtypes.OpValue<dbtypes.OpYjsUpdate>>>}
+ * @return {Promise<dbtypes.OpValue<operations.OpNoPermission>|null>}
  */
-export const getDocYjsUpdates = async (ydb, collection, doc) => getDocOps(ydb, collection, doc, dbtypes.OpYjsUpdateType, 0)
+export const getLastNoPerm = async (ydb, collection, doc) => {
+  const entries = await ydb.db.transact(tr =>
+    tr.tables.oplog.indexes.doc.getEntries({
+      start: new dbtypes.DocKey(operations.OpNoPermissionType, collection, doc, 0),
+      end: new dbtypes.DocKey(operations.OpNoPermissionType, collection, doc, number.HIGHEST_UINT32),
+      limit: 1,
+      reverse: true
+    })
+  )
+  return _updateOpClocksHelper(ydb, entries)[0] || null
+}
+
+/**
+ * @param {Ydb} ydb
+ * @param {string} collection
+ * @param {string} doc
+ * @return {Promise<Array<dbtypes.OpValue<operations.OpYjsUpdate>>>}
+ */
+export const getDocYjsUpdates = async (ydb, collection, doc) => getDocOps(ydb, collection, doc, operations.OpYjsUpdateType, 0)
+
+/**
+ * @param {Ydb} ydb
+ * @param {string} collection
+ * @param {string} doc
+ * @return {Promise<Array<dbtypes.OpValue<operations.OpNoPermission>>>}
+ */
+// @todo only get last op of this kind
+export const getDocNoPerm = async (ydb, collection, doc) => getDocOps(ydb, collection, doc, operations.OpNoPermissionType, 0)
 
 /**
  * @todo these kinds of requests can be chached
@@ -101,22 +135,22 @@ export const getDocYjsUpdates = async (ydb, collection, doc) => getDocOps(ydb, c
  * @param {Ydb} ydb
  * @param {string} collection
  * @param {string} doc
- * @return {Promise<dbtypes.OpValue<dbtypes.OpPerm>>}
+ * @return {Promise<operations.OpPerm>}
  */
-export const getDocPerm = async (ydb, collection, doc) => getDocOps(ydb, collection, doc, dbtypes.OpPermType, 0).then(ops => utils.mergeOps(ops, false)[0])
+export const getDocPerm = async (ydb, collection, doc) => getDocOps(ydb, collection, doc, operations.OpPermType, 0).then(ops => utils.mergeOps(ops, false)[0].op)
 
 /**
- * @param {Array<dbtypes.NoPermissionIndexKey>} noperms
+ * @param {Array<dbtypes.DocKey>} noperms
  */
 const filterDuplicateNoPermIndexes = noperms => {
   const visited = new Set()
   /**
-   * @type {Array<dbtypes.NoPermissionIndexKey>}
+   * @type {Array<dbtypes.DocKey>}
    */
   const result = []
   for (let i = noperms.length - 1; i >= 0; i--) {
     const p = noperms[i]
-    if (visited.has(p.doc)) continue
+    if (p.doc == null || visited.has(p.doc)) continue
     visited.add(p.doc)
     result.push(p)
   }
@@ -129,11 +163,11 @@ const filterDuplicateNoPermIndexes = noperms => {
  *
  * @param {Ydb} ydb
  * @param {string} collection
- * @return {Promise<Array<dbtypes.NoPermissionIndexKey>>}
+ * @return {Promise<Array<dbtypes.DocKey>>}
  */
 export const getNoPerms = async (ydb, collection) =>
   ydb.db.transact(tr =>
-    tr.tables.oplog.indexes.noperm.getKeys({ start: new dbtypes.NoPermissionIndexKey(collection, '', 0) })
+    tr.tables.oplog.indexes.doc.getKeys({ prefix: { type: operations.OpNoPermissionType, collection } })
       .then(ks => filterDuplicateNoPermIndexes(ks || []))
   )
 
@@ -146,7 +180,7 @@ export const getClock = async (ydb, clientid, collection) =>
   ydb.db.transact(async tr => {
     if (ydb.clientid === clientid) {
       const latestEntry = await tr.tables.oplog.getKeys({
-        end: number.HIGHEST_INT32, // @todo change to uint
+        end: number.HIGHEST_UINT32, // @todo change to uint
         reverse: true,
         limit: 1
       })
@@ -183,7 +217,7 @@ export const confirmClientClock = async (ydb, clientid, collection, newClock, lo
  * @param {Ydb} ydb
  * @param {string} collection
  * @param {string} doc
- * @param {dbtypes.AbstractOp} opv
+ * @param {operations.AbstractOp} opv
  */
 export const addOp = async (ydb, collection, doc, opv) => {
   const op = await ydb.db.transact(async tr => {
@@ -204,13 +238,13 @@ export const addOp = async (ydb, collection, doc, opv) => {
  * @param {string} doc
  * @param {Uint8Array} update
  */
-export const addYjsUpdate = async (ydb, collection, doc, update) => addOp(ydb, collection, doc, new dbtypes.OpYjsUpdate(update))
+export const addYjsUpdate = async (ydb, collection, doc, update) => addOp(ydb, collection, doc, new operations.OpYjsUpdate(update))
 
 /**
  * @param {Ydb} ydb
  * @param {string} collection
  * @param {string} doc
- * @param {dbtypes.OpPerm} perm
+ * @param {operations.OpPerm} perm
  */
 export const addPermissionChange = async (ydb, collection, doc, perm) => addOp(ydb, collection, doc, perm)
 

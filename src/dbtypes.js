@@ -2,238 +2,12 @@ import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import * as error from 'lib0/error'
 import * as isodb from 'isodb'
-import * as Y from 'yjs'
-import * as math from 'lib0/math'
-
-export const OpYjsUpdateType = 0
-export const OpNoPermissionType = 1
-export const OpPermType = 2
-
-export class AbstractOp {
-  /**
-   * @param {any} _anyarg
-   */
-  constructor (_anyarg) {
-    error.methodUnimplemented()
-  }
-
-  /**
-   * @return {number}
-   */
-  get type () {
-    return error.methodUnimplemented()
-  }
-
-  /**
-   * @param {encoding.Encoder} _encoder
-   */
-  encode (_encoder) {
-    error.methodUnimplemented()
-  }
-
-  /**
-   * @param {decoding.Decoder} _decoder
-   * @return {AbstractOp}
-   */
-  static decode (_decoder) {
-    error.methodUnimplemented()
-  }
-
-  /**
-   * @param {Array<OpValue>} _ops
-   * @param {boolean} _gc
-   * @return {OpValue}
-   */
-  static merge (_ops, _gc) {
-    error.methodUnimplemented()
-  }
-}
+import * as requests from './messages'
+import * as operations from './operations.js'
+import * as binary from 'lib0/binary'
 
 /**
- * An operation that contains information about which users have access to a document.
- *
- * @implements AbstractOp
- */
-export class OpPerm {
-  constructor () {
-    /**
-     * @type {Map<number,number>}
-     */
-    this.access = new Map()
-  }
-
-  /**
-   * @param {number} clientid
-   */
-  hasReadAccess (clientid) {
-    return (this.access.get(clientid) || 0) % 3 > 0
-  }
-
-  /**
-   * @param {number} clientid
-   */
-  hasWriteAccess (clientid) {
-    return (this.access.get(clientid) || 0) % 4 > 1
-  }
-
-  /**
-   * @param {number} clientid
-   */
-  hasAdminAccess (clientid) {
-    return (this.access.get(clientid) || 0) % 4 === 3
-  }
-
-  get type () {
-    return OpPermType
-  }
-
-  /**
-   * @param {encoding.Encoder} encoder
-   */
-  encode (encoder) {
-    encoding.writeVarUint(encoder, this.access.size)
-    this.access.forEach((perm, clientid) => {
-      encoding.writeVarUint(encoder, clientid)
-      encoding.writeVarUint(encoder, perm)
-    })
-  }
-
-  /**
-   * @param {decoding.Decoder} decoder
-   * @return {OpPerm}
-   */
-  static decode (decoder) {
-    const op = new OpPerm()
-    const size = decoding.readVarUint(decoder)
-    for (let i = 0; i < size; i++) {
-      const clientid = decoding.readVarUint(decoder)
-      const perm = decoding.readVarUint(decoder)
-      op.access.set(clientid, perm)
-    }
-    return op
-  }
-
-  /**
-   * @param {Array<OpValue<OpPerm>>} ops
-   * @param {boolean} _gc
-   * @return {OpValue<OpPerm>}
-   */
-  static merge (ops, _gc) {
-    const mergedOp = ops[0].op
-    for (let i = 1; i < ops.length; i++) {
-      const op = ops[i]
-      op.op.access.forEach((perm, clientid) => {
-        mergedOp.access.set(clientid, math.max(mergedOp.access.get(clientid) || 0, perm))
-      })
-    }
-    const lastOp = ops[ops.length - 1]
-    lastOp.op = mergedOp
-    return lastOp
-  }
-}
-
-/**
- * An operation that is used as a placeholder until we request access again.
- * @implements AbstractOp
- */
-export class OpNoPermission {
-  get type () {
-    return OpNoPermissionType
-  }
-
-  /**
-   * @param {encoding.Encoder} _encoder
-   */
-  encode (_encoder) {}
-
-  /**
-   * @param {decoding.Decoder} _decoder
-   * @return {AbstractOp}
-   */
-  static decode (_decoder) {
-    return new OpNoPermission()
-  }
-
-  /**
-   * @param {Array<OpValue<OpNoPermission>>} ops
-   * @param {boolean} _gc
-   * @return {OpValue<OpNoPermission>}
-   */
-  static merge (ops, _gc) {
-    return ops[ops.length - 1]
-  }
-}
-
-/**
- * @implements AbstractOp
- */
-export class OpYjsUpdate {
-  /**
-   * @param {Uint8Array} update
-   */
-  constructor (update) {
-    this.update = update
-  }
-
-  get type () {
-    return OpYjsUpdateType
-  }
-
-  /**
-   * @param {encoding.Encoder} encoder
-   */
-  encode (encoder) {
-    encoding.writeVarUint8Array(encoder, this.update)
-  }
-
-  /**
-   * @param {decoding.Decoder} decoder
-   * @return {AbstractOp}
-   */
-  static decode (decoder) {
-    return new OpYjsUpdate(decoding.readVarUint8Array(decoder))
-  }
-
-  /**
-   * @param {Array<OpValue<OpYjsUpdate>>} ops
-   * @param {boolean} gc
-   * @return {OpValue<OpYjsUpdate>}
-   */
-  static merge (ops, gc) {
-    let update
-    if (gc) {
-      const ydoc = new Y.Doc()
-      ydoc.transact(() => {
-        for (let i = 0; i < ops.length; i++) {
-          Y.applyUpdateV2(ydoc, ops[i].op.update)
-        }
-      })
-      update = Y.encodeStateAsUpdateV2(ydoc)
-    } else {
-      update = Y.mergeUpdatesV2(ops.map(op => op.op.update))
-    }
-    const lastOp = ops[ops.length - 1]
-    lastOp.op = new OpYjsUpdate(update)
-    return lastOp
-  }
-}
-
-/**
- * @type {Object<number,typeof AbstractOp>}
- */
-const optypeMap = {
-  [OpYjsUpdateType]: OpYjsUpdate,
-  [OpNoPermissionType]: OpNoPermission
-}
-
-/**
- * @param {number} type
- * @return {typeof AbstractOp}
- */
-export const optypeToConstructor = type => optypeMap[type]
-
-/**
- * @template {AbstractOp} [OP=AbstractOp]
+ * @template {operations.AbstractOp} [OP=operations.AbstractOp]
  * @implements isodb.IEncodable
  */
 export class OpValue {
@@ -256,7 +30,7 @@ export class OpValue {
    * @param {encoding.Encoder} encoder
    */
   encode (encoder) {
-    encoding.writeUint8(encoder, OpYjsUpdateType)
+    encoding.writeUint8(encoder, operations.OpYjsUpdateType)
     encoding.writeVarUint(encoder, this.client)
     encoding.writeVarUint(encoder, this.clock)
     encoding.writeVarString(encoder, this.collection)
@@ -274,24 +48,32 @@ export class OpValue {
     const clientClockFkey = decoding.readVarUint(decoder)
     const collection = decoding.readVarString(decoder)
     const doc = decoding.readVarString(decoder)
-    const op = optypeToConstructor(type).decode(decoder)
+    const op = operations.typeMap[type].decode(decoder)
     return new OpValue(clientFkey, clientClockFkey, collection, doc, op)
   }
 }
 
 export const CertificateValue = isodb.StringKey
 
-const RequestDocumentType = 0
-
 /**
+ * @todo create a "Request" type that is used in protocol
+ * @template {requests.RequestDocument} [REQ=requests.RequestDocument]
  * @implements isodb.IEncodable
  */
 export class RequestValue {
   /**
-   * @param {encoding.Encoder} _encoder
+   * @param {REQ} req
    */
-  encode (_encoder) {
-    error.unexpectedCase()
+  constructor (req) {
+    this.req = req
+  }
+
+  /**
+   * @param {encoding.Encoder} encoder
+   */
+  encode (encoder) {
+    encoding.writeVarUint(encoder, this.req.type)
+    this.req.encode(encoder)
   }
 
   /**
@@ -299,47 +81,14 @@ export class RequestValue {
    * @return {isodb.IEncodable}
    */
   static decode (decoder) {
-    const requestType = decoding.peekVarUint(decoder)
+    const requestType = decoding.readVarUint(decoder)
     switch (requestType) {
-      case RequestDocumentType: {
-        return RequestDocumentValue.decode(decoder)
+      case requests.RequestDocumentType: {
+        return requests.RequestDocument.decode(decoder)
       }
       default:
         error.methodUnimplemented()
     }
-  }
-}
-
-export class RequestDocumentValue extends RequestValue {
-  /**
-   * @param {string} collection
-   * @param {string} doc
-   */
-  constructor (collection, doc) {
-    super()
-    this.collection = collection
-    this.doc = doc
-  }
-
-  /**
-   * @param {encoding.Encoder} encoder
-   */
-  encode (encoder) {
-    encoding.writeVarUint(encoder, RequestDocumentType)
-    encoding.writeVarString(encoder, this.collection)
-    encoding.writeVarString(encoder, this.doc)
-  }
-
-  /**
-   * @param {decoding.Decoder} decoder
-   * @return {RequestValue}
-   */
-  static decode (decoder) {
-    const type = decoding.readVarUint(decoder)
-    if (type !== RequestDocumentType) error.methodUnimplemented()
-    const collection = decoding.readVarString(decoder)
-    const doc = decoding.readVarString(decoder)
-    return new RequestDocumentValue(collection, doc)
   }
 }
 
@@ -448,16 +197,63 @@ export class ClocksKey {
  */
 export class DocKey {
   /**
+   * @param {number} type
    * @param {string} collection
    * @param {string} doc
-   * @param {number} type
    * @param {number} opid
    */
-  constructor (collection, doc, type, opid) {
+  constructor (type, collection, doc, opid) {
+    this.type = type
     this.collection = collection
     this.doc = doc
-    this.type = type
     this.opid = opid
+  }
+
+  /**
+   * @param {{ type:number, collection:string, doc?:string }} prefix
+   */
+  static prefix ({ type, collection, doc }) {
+    return encoding.encode(encoder => {
+      encoding.writeUint16(encoder, type)
+      encoding.writeVarString(encoder, collection)
+      doc != null && encoding.writeVarString(encoder, doc)
+    })
+  }
+
+  /**
+   * @param {encoding.Encoder} encoder
+   */
+  encode (encoder) {
+    encoding.writeUint16(encoder, this.type)
+    encoding.writeVarString(encoder, this.collection)
+    encoding.writeVarString(encoder, this.doc)
+    encoding.writeUint32(encoder, this.opid)
+  }
+
+  /**
+   * @param {decoding.Decoder} decoder
+   * @return {isodb.IEncodable}
+   */
+  static decode (decoder) {
+    const type = decoding.readUint16(decoder)
+    const collection = decoding.readVarString(decoder)
+    const doc = decoding.readVarString(decoder)
+    const opid = decoding.readUint32(decoder)
+    return new DocKey(type, collection, doc, opid)
+  }
+}
+
+/**
+ * @implements isodb.IEncodable
+ */
+export class UnsyncedKey {
+  /**
+   * @param {string} collection
+   * @param {string?} doc
+   */
+  constructor (collection, doc) {
+    this.collection = collection
+    this.doc = doc
   }
 
   /**
@@ -465,9 +261,14 @@ export class DocKey {
    */
   encode (encoder) {
     encoding.writeVarString(encoder, this.collection)
-    encoding.writeVarString(encoder, this.doc)
-    encoding.writeUint16(encoder, this.type)
-    encoding.writeUint32(encoder, this.opid)
+    if (this.doc != null) {
+      // use empty string '' as start
+      encoding.writeVarString(encoder, this.doc)
+    } else {
+      // marking the end
+      // this mustn't be decoded
+      encoding.writeUint32(encoder, binary.BITS32)
+    }
   }
 
   /**
@@ -477,12 +278,11 @@ export class DocKey {
   static decode (decoder) {
     const collection = decoding.readVarString(decoder)
     const doc = decoding.readVarString(decoder)
-    const type = decoding.readUint16(decoder)
-    const opid = decoding.readUint32(decoder)
-    return new DocKey(collection, doc, type, opid)
+    return new this(collection, doc)
   }
 }
 
+// @todo this can be removed
 export class NoPermissionIndexKey {
   /**
    * @param {string} collection

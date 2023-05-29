@@ -2,6 +2,12 @@ import * as dbtypes from './dbtypes.js'
 import * as isodb from 'isodb'
 
 /**
+ * @todos
+ * - implement protocol/RequestDoc (+ be able to apply it)
+ * - implement todo queue for requesting docs
+ */
+
+/**
  * @typedef {import('./ydb.js').Ydb} Ydb
  */
 
@@ -16,7 +22,7 @@ export const def = {
            * @param {isodb.AutoKey} k
            * @param {dbtypes.OpValue} v
            */
-          mapper: (k, v) => new dbtypes.DocKey(v.collection, v.doc, v.op.type, k.v),
+          mapper: (k, v) => new dbtypes.DocKey(v.op.type, v.collection, v.doc, k.v),
           key: dbtypes.DocKey
         },
         collection: {
@@ -26,14 +32,6 @@ export const def = {
            */
           mapper: (k, v) => new dbtypes.CollectionKey(v.collection, k.v),
           key: dbtypes.CollectionKey
-        },
-        noperm: {
-          /**
-           * @param {isodb.AutoKey} k
-           * @param {dbtypes.OpValue} v
-           */
-          mapper: (k, v) => v.op.type === dbtypes.OpPermType ? new dbtypes.NoPermissionIndexKey(v.collection, v.doc, k.v) : null,
-          key: dbtypes.NoPermissionIndexKey
         }
       }
     },
@@ -41,9 +39,9 @@ export const def = {
       key: dbtypes.ClocksKey,
       value: dbtypes.ClientClockValue
     },
-    requests: {
-      key: isodb.AutoKey,
-      value: dbtypes.RequestValue
+    unsyncedDocs: {
+      key: dbtypes.UnsyncedKey,
+      value: isodb.NoValue
     }
   }
 }
@@ -67,6 +65,17 @@ export const def = {
  * # Todo
  * - ( ) implement request "sync document starting from clock X"
  * - ( ) implement requests table and figure out key-system.
+ */
+
+/**
+ * # The NoPerm op
+ * When a "server" mustn't send an update to a client because it lacks permission, we send
+ * a NoPerm op instead with the current client/clock of the "server".
+ * Once the client receives access, the client requests the content of that document from other
+ * clients using the "RequestDoc" (collection, doc, latestClockOfLastNoPerm) protocol op. We apply
+ * the document update op without checking clock. If the remote client has at least
+ * "latestClockOfLastNoPerm", then we delete the todo item. Otherwise, we need to try again in the
+ * future.
  */
 
 /**

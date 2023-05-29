@@ -6,6 +6,7 @@ import * as isodb from 'isodb' // eslint-disable-line
 import * as db from './db.js' // eslint-disable-line
 import { Observable } from 'lib0/observable'
 import * as random from 'lib0/random'
+import * as actions from './actions.js'
 
 /**
  * @typedef {Object} YdbConf
@@ -63,12 +64,22 @@ export class Ydb extends Observable {
     return ydoc
   }
 
+  /**
+   * @param {string} collection
+   * @param {string} docname
+   */
+  async getPermission (collection, docname) {
+    const perm = await actions.getDocPerm(this, collection, docname)
+    return perm.getAccessType(this.clientid)
+  }
+
   destroy () {
     this.collections.forEach(collection => {
       collection.forEach(docs => {
         docs.forEach(doc => doc.destroy())
       })
     })
+    this.comms.forEach(comm => comm.destroy())
     return this.db.destroy()
   }
 }

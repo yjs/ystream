@@ -63,7 +63,7 @@
     "typescript": "^5.0.4"
   },
   "dependencies": {
-    "isodb": "^0.1.0",
+    "isodb": "^0.1.6",
     "lib0": "^0.2.76",
     "yjs": "^13.5.43"
   }

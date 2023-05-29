@@ -7,6 +7,8 @@ import * as protocol from './protocol.js'
 import * as decoding from 'lib0/decoding'
 import * as encoding from 'lib0/encoding'
 
+// @todo rename all interfacses to have I* prefix.
+
 /**
  * @typedef {import('./ydb.js').Ydb} Ydb
  */
@@ -44,6 +46,10 @@ export class Comm extends Peer {
    * @param {Array<OpValue>} _ops
    */
   broadcast (_ops) {
+    error.methodUnimplemented()
+  }
+
+  destroy () {
     error.methodUnimplemented()
   }
 }

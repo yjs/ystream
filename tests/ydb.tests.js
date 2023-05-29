@@ -4,8 +4,8 @@ import * as Y from 'yjs'
 import * as utils from '../src/utils.js'
 import * as promise from 'lib0/promise'
 import * as array from 'lib0/array'
-import * as dbtypes from '../src/dbtypes.js'
 import * as actions from '../src/actions.js'
+import * as operations from '../src/operations.js'
 
 /**
  * @param {Y.Doc} ydoc1
@@ -36,7 +36,7 @@ export const testBasic = async tc => {
   actions.addYjsUpdate(y, 'collection', 'docname', emptyUpdate)
   actions.addYjsUpdate(y, 'collection2', 'docname', emptyUpdate)
   actions.addYjsUpdate(y, 'collection', 'docname2', emptyUpdate)
-  const docOps = await actions.getDocOps(y, 'collection', 'docname', dbtypes.OpYjsUpdateType, 0)
+  const docOps = await actions.getDocOps(y, 'collection', 'docname', operations.OpYjsUpdateType, 0)
   t.assert(docOps.length === 3)
   const allOps = await actions.getOps(y, 0)
   t.assert(allOps.length === 3) // because doc ops are merged
@@ -60,10 +60,10 @@ export const testMergeOps = (_tc) => {
   t.assert(merged.length === 2)
   t.assert(merged[0].client === 0)
   t.assert(merged[0].clock === 1)
-  t.compare(/** @type {import('../src/dbtypes.js').OpYjsUpdate} */ (merged[0].op).update, emptyUpdate)
+  t.compare(/** @type {operations.OpYjsUpdate} */ (merged[0].op).update, emptyUpdate)
   t.assert(merged[1].client === 0)
   t.assert(merged[1].clock === 2)
-  t.compare(/** @type {import('../src/dbtypes.js').OpYjsUpdate} */ (merged[1].op).update, emptyUpdate)
+  t.compare(/** @type {operations.OpYjsUpdate} */ (merged[1].op).update, emptyUpdate)
 }
 
 /**
@@ -124,7 +124,7 @@ export const testComm = async tc => {
   console.log(await actions.getClocks(ydb1), 'clientid: ', ydb1.clientid)
   console.log(await actions.getClocks(ydb2), 'clientid: ', ydb2.clientid)
   console.log(await actions.getClocks(ydb3), 'clientid: ', ydb3.clientid)
-  console.log('updates', ydb1.clientid, await actions.getDocOps(ydb1, 'collection', 'ydoc', dbtypes.OpYjsUpdateType, 0))
-  console.log('updates 2', ydb2.clientid, await actions.getDocOps(ydb2, 'collection', 'ydoc', dbtypes.OpYjsUpdateType, 0))
-  console.log('updates 3', ydb3.clientid, await actions.getDocOps(ydb3, 'collection', 'ydoc', dbtypes.OpYjsUpdateType, 0))
+  console.log('updates', ydb1.clientid, await actions.getDocOps(ydb1, 'collection', 'ydoc', operations.OpYjsUpdateType, 0))
+  console.log('updates 2', ydb2.clientid, await actions.getDocOps(ydb2, 'collection', 'ydoc', operations.OpYjsUpdateType, 0))
+  console.log('updates 3', ydb3.clientid, await actions.getDocOps(ydb3, 'collection', 'ydoc', operations.OpYjsUpdateType, 0))
 }
