@@ -2,7 +2,7 @@ import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import * as error from 'lib0/error'
 import * as isodb from 'isodb'
-import * as requests from './messages'
+import * as requests from './messages.js'
 import * as operations from './operations.js'
 import * as binary from 'lib0/binary'
 
@@ -43,7 +43,7 @@ export class OpValue {
    * @return {isodb.IEncodable}
    */
   static decode (decoder) {
-    const type = decoding.readUint8(decoder)
+    const type = /** @type {operations.OpTypeId} */ (decoding.readUint8(decoder))
     const clientFkey = decoding.readVarUint(decoder)
     const clientClockFkey = decoding.readVarUint(decoder)
     const collection = decoding.readVarString(decoder)

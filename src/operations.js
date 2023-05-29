@@ -13,6 +13,10 @@ export const OpNoPermissionType = 1
 export const OpPermType = 2
 
 /**
+ * @typedef {OpYjsUpdateType | OpNoPermissionType | OpPermType} OpTypeId
+ */
+
+/**
  * @todo rename all interfaces to I[* / AbstractOp]
  * @implements IEncodable
  */
@@ -25,7 +29,7 @@ export class AbstractOp {
   }
 
   /**
-   * @return {number}
+   * @return {OpTypeId}
    */
   get type () {
     return error.methodUnimplemented()
@@ -108,6 +112,9 @@ export class OpPerm {
     }
   }
 
+  /**
+   * @return {OpPermType}
+   */
   get type () {
     return OpPermType
   }
@@ -162,6 +169,9 @@ export class OpPerm {
  * @implements AbstractOp
  */
 export class OpNoPermission {
+  /**
+   * @return {OpNoPermissionType}
+   */
   get type () {
     return OpNoPermissionType
   }
@@ -200,6 +210,9 @@ export class OpYjsUpdate {
     this.update = update
   }
 
+  /**
+   * @return {OpYjsUpdateType}
+   */
   get type () {
     return OpYjsUpdateType
   }
@@ -243,10 +256,8 @@ export class OpYjsUpdate {
   }
 }
 
-/**
- * @type {Object<number,typeof AbstractOp>}
- */
 export const typeMap = {
   [OpYjsUpdateType]: OpYjsUpdate,
-  [OpNoPermissionType]: OpNoPermission
+  [OpNoPermissionType]: OpNoPermission,
+  [OpPermType]: OpPerm
 }

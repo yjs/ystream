@@ -35,8 +35,9 @@ export const getUnsyncedDocs = (ydb, collection) => ydb.db.transact(async tr => 
 })
 
 /**
+ * @template {operations.AbstractOp} OP
  * @param {Ydb} ydb
- * @param {Array<{ value: dbtypes.OpValue, fkey: isodb.AutoKey }>} updates
+ * @param {Array<{ value: dbtypes.OpValue<OP>, fkey: isodb.AutoKey }>} updates
  */
 const _updateOpClocksHelper = (ydb, updates) => updates.map(update => {
   if (update.value.client === ydb.clientid) {
@@ -77,12 +78,13 @@ export const getCollectionOps = async (ydb, collection, clock) => {
 }
 
 /**
+ * @template {operations.OpTypeId} TYPE
  * @param {Ydb} ydb
  * @param {string} collection
  * @param {string} doc
- * @param {number} type
+ * @param {TYPE} type
  * @param {number} clock
- * @return {Promise<Array<dbtypes.OpValue<any>>>}
+ * @return {Promise<Array<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>>>}
  */
 export const getDocOps = async (ydb, collection, doc, type, clock) => {
   const entries = await ydb.db.transact(tr =>
@@ -91,7 +93,7 @@ export const getDocOps = async (ydb, collection, doc, type, clock) => {
       end: new dbtypes.DocKey(type, collection, doc, number.HIGHEST_UINT32)
     })
   )
-  return _updateOpClocksHelper(ydb, entries)
+  return /** @type {Array<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>>} */ (_updateOpClocksHelper(ydb, entries))
 }
 
 /**
@@ -109,7 +111,7 @@ export const getLastNoPerm = async (ydb, collection, doc) => {
       reverse: true
     })
   )
-  return _updateOpClocksHelper(ydb, entries)[0] || null
+  return /** @type {dbtypes.OpValue<operations.OpNoPermission>} */ (_updateOpClocksHelper(ydb, entries)[0]) || null
 }
 
 /**

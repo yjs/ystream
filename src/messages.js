@@ -128,7 +128,7 @@ export class ResendDocument {
     const ops = []
     const opsLen = decoding.readVarUint(decoder)
     for (let i = 0; i < opsLen; i++) {
-      const type = decoding.readVarUint(decoder)
+      const type = /** @type {operations.OpTypeId} */ (decoding.readVarUint(decoder))
       ops.push(operations.typeMap[type].decode(decoder))
     }
     return new ResendDocument(collection, doc, cclientid, cclock, ops)

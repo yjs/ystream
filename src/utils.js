@@ -1,19 +1,20 @@
 import * as map from 'lib0/map'
 import * as Y from 'yjs'
 import * as dbtypes from './dbtypes.js' // eslint-disable-line
+import * as operations from './operations.js'
 import * as array from 'lib0/array'
 
 /**
  * Merges ops on the same collection & doc
  *
- * @template {dbtypes.AbstractOp} OP
+ * @template {operations.AbstractOp} OP
  * @param {Array<dbtypes.OpValue<OP>>} ops
  * @param {boolean} gc
  * @return {Array<dbtypes.OpValue<OP>>}
  */
 const _mergeOpsHelper = (ops, gc) => {
   /**
-   * @type {Map<number,Array<dbtypes.OpValue>>}
+   * @type {Map<operations.OpTypeId,Array<dbtypes.OpValue>>}
    */
   const opsSortedByType = map.create()
   for (let i = ops.length - 1; i >= 0; i--) {
@@ -24,12 +25,12 @@ const _mergeOpsHelper = (ops, gc) => {
    * @type {Array<dbtypes.OpValue<any>>}
    */
   const mergedOps = []
-  opsSortedByType.forEach((sops, type) => { mergedOps.push(dbtypes.optypeToConstructor(type).merge(sops, gc)) })
+  opsSortedByType.forEach((sops, type) => { mergedOps.push(/** @type {typeof operations.AbstractOp} */ (operations.typeMap[type]).merge(sops, gc)) })
   return mergedOps
 }
 
 /**
- * @template {dbtypes.AbstractOp} OP
+ * @template {operations.AbstractOp} OP
  * @param {Array<dbtypes.OpValue<OP>>} ops
  * @param {boolean} gc
  * @return {Array<dbtypes.OpValue<OP>>}
@@ -61,7 +62,7 @@ export const mergeOps = (ops, gc) => {
  * @param {Array<dbtypes.OpValue>} ops
  */
 export const filterYjsUpdateOps = ops =>
-  /** @type {Array<dbtypes.OpValue<dbtypes.OpYjsUpdate>>} */ (ops.filter(op => op.op.type === dbtypes.OpYjsUpdateType))
+  /** @type {Array<dbtypes.OpValue<operations.OpYjsUpdate>>} */ (ops.filter(op => op.op.type === operations.OpYjsUpdateType))
 
 /**
  * @param {Array<dbtypes.OpValue>} ops

@@ -6,6 +6,7 @@ import * as promise from 'lib0/promise'
 import * as array from 'lib0/array'
 import * as actions from '../src/actions.js'
 import * as operations from '../src/operations.js'
+import * as dbtypes from '../src/dbtypes.js'
 
 /**
  * @param {Y.Doc} ydoc1
@@ -49,13 +50,13 @@ export const testBasic = async tc => {
  */
 export const testMergeOps = (_tc) => {
   /**
-   * @type {Array<Ydb.OpValue>}
+   * @type {Array<dbtypes.OpValue>}
    */
   const ops = []
-  ops.push(new Ydb.OpValue(0, 0, 'c1', 'd1', new Ydb.YjsOp(emptyUpdate)))
-  ops.push(new Ydb.OpValue(1, 3, 'c1', 'd1', new Ydb.YjsOp(emptyUpdate)))
-  ops.push(new Ydb.OpValue(0, 1, 'c1', 'd1', new Ydb.YjsOp(emptyUpdate)))
-  ops.push(new Ydb.OpValue(0, 2, 'c2', 'd1', new Ydb.YjsOp(emptyUpdate)))
+  ops.push(new dbtypes.OpValue(0, 0, 'c1', 'd1', new operations.OpYjsUpdate(emptyUpdate)))
+  ops.push(new dbtypes.OpValue(1, 3, 'c1', 'd1', new operations.OpYjsUpdate(emptyUpdate)))
+  ops.push(new dbtypes.OpValue(0, 1, 'c1', 'd1', new operations.OpYjsUpdate(emptyUpdate)))
+  ops.push(new dbtypes.OpValue(0, 2, 'c2', 'd1', new operations.OpYjsUpdate(emptyUpdate)))
   const merged = utils.mergeOps(ops, false)
   t.assert(merged.length === 2)
   t.assert(merged[0].client === 0)
