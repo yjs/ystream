@@ -13,7 +13,11 @@ export const OpNoPermissionType = 1
 export const OpPermType = 2
 
 /**
- * @typedef {OpYjsUpdateType | OpNoPermissionType | OpPermType} OpTypeId
+ * @typedef {OpYjsUpdateType | OpNoPermissionType | OpPermType} OpTypeIds
+ */
+
+/**
+ * @typedef {OpYjsUpdate | OpNoPermission | OpPerm} OpTypes
  */
 
 /**
@@ -29,7 +33,7 @@ export class AbstractOp {
   }
 
   /**
-   * @return {OpTypeId}
+   * @return {OpTypeIds}
    */
   get type () {
     return error.methodUnimplemented()
@@ -44,7 +48,7 @@ export class AbstractOp {
 
   /**
    * @param {decoding.Decoder} _decoder
-   * @return {AbstractOp}
+   * @return {OpTypes}
    */
   static decode (_decoder) {
     error.methodUnimplemented()
@@ -183,7 +187,7 @@ export class OpNoPermission {
 
   /**
    * @param {decoding.Decoder} _decoder
-   * @return {AbstractOp}
+   * @return {OpNoPermission}
    */
   static decode (_decoder) {
     return new OpNoPermission()
@@ -226,7 +230,7 @@ export class OpYjsUpdate {
 
   /**
    * @param {decoding.Decoder} decoder
-   * @return {AbstractOp}
+   * @return {OpYjsUpdate}
    */
   static decode (decoder) {
     return new OpYjsUpdate(decoding.readVarUint8Array(decoder))

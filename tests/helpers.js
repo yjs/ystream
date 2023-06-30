@@ -11,6 +11,42 @@ const getDbName = tc => `.test_dbs/${tc.moduleName}/${tc.testName}`
 
 export const emptyUpdate = Y.encodeStateAsUpdateV2(new Y.Doc())
 
+class TestClients {
+  /**
+   * @param {string} name
+   */
+  constructor (name) {
+    this.name = name
+    /**
+     * @type {Array<Ydb.Ydb>}
+     */
+    this.clients = []
+    this.cliNum = 0
+  }
+
+  async createClient () {
+    const dbname = `${this.name}-${this.cliNum++}`
+    await Ydb.deleteYdb(dbname)
+    const ydb = await Ydb.openYdb(dbname, ['c1', 'c2', 'c3'], {
+      comms: [new Ydb.MockComm()]
+    })
+    this.clients.push(ydb)
+    return ydb
+  }
+
+  /**
+   * @param {number} num
+   */
+  async createClients (num) {
+    return promise.all(array.unfold(num, () => this.createClient()))
+  }
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const createTestHelper = tc => new TestClients(getDbName(tc))
+
 /**
  * @todo this should return a class that creates Ydb instances. Also rename this to Udb.
  *

@@ -7,6 +7,7 @@ import * as db from './db.js' // eslint-disable-line
 import { Observable } from 'lib0/observable'
 import * as random from 'lib0/random'
 import * as actions from './actions.js'
+import * as operations from './operations.js'
 
 /**
  * @typedef {Object} YdbConf
@@ -69,8 +70,8 @@ export class Ydb extends Observable {
    * @param {string} docname
    */
   async getPermission (collection, docname) {
-    const perm = await actions.getDocPerm(this, collection, docname)
-    return perm.getAccessType(this.clientid)
+    const perm = await actions.getDocOpsMerged(this, collection, docname, operations.OpPermType)
+    return perm != null ? perm.op.getAccessType(this.clientid) : false
   }
 
   destroy () {

@@ -7,14 +7,14 @@ import * as array from 'lib0/array'
 /**
  * Merges ops on the same collection & doc
  *
- * @template {operations.AbstractOp} OP
+ * @template {operations.OpTypes} OP
  * @param {Array<dbtypes.OpValue<OP>>} ops
  * @param {boolean} gc
  * @return {Array<dbtypes.OpValue<OP>>}
  */
 const _mergeOpsHelper = (ops, gc) => {
   /**
-   * @type {Map<operations.OpTypeId,Array<dbtypes.OpValue>>}
+   * @type {Map<operations.OpTypeIds,Array<dbtypes.OpValue>>}
    */
   const opsSortedByType = map.create()
   for (let i = ops.length - 1; i >= 0; i--) {
@@ -30,7 +30,7 @@ const _mergeOpsHelper = (ops, gc) => {
 }
 
 /**
- * @template {operations.AbstractOp} OP
+ * @template {operations.OpTypes} OP
  * @param {Array<dbtypes.OpValue<OP>>} ops
  * @param {boolean} gc
  * @return {Array<dbtypes.OpValue<OP>>}

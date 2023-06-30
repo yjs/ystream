@@ -25,7 +25,7 @@ import * as decoding from 'lib0/decoding'
 export const getUnsyncedDocs = (ydb, collection) => ydb.db.transact(async tr => {
   const ud = await tr.tables.unsyncedDocs.getKeys({ start: new dbtypes.UnsyncedKey(collection, ''), end: new dbtypes.UnsyncedKey(collection, null) })
   const ds = await promise.all(ud.map(async u => {
-    const np = await getLastNoPerm(ydb, collection, /** @type {string} */ (u.doc))
+    const np = await getDocOpsLast(ydb, collection, /** @type {string} */ (u.doc), operations.OpNoPermissionType)
     if (np == null) {
       await tr.tables.unsyncedDocs.remove(u)
     }
@@ -35,15 +35,17 @@ export const getUnsyncedDocs = (ydb, collection) => ydb.db.transact(async tr => 
 })
 
 /**
- * @template {operations.AbstractOp} OP
+ * @template {operations.OpTypes} OP
+ * @template {{ value: dbtypes.OpValue<OP>, fkey: isodb.AutoKey }} UPDATE
  * @param {Ydb} ydb
- * @param {Array<{ value: dbtypes.OpValue<OP>, fkey: isodb.AutoKey }>} updates
+ * @param {Array<UPDATE>} updates
+ * @return {Array<UPDATE>}
  */
 const _updateOpClocksHelper = (ydb, updates) => updates.map(update => {
   if (update.value.client === ydb.clientid) {
     update.value.clock = update.fkey.v
   }
-  return update.value
+  return update
 })
 
 /**
@@ -74,11 +76,30 @@ export const getCollectionOps = async (ydb, collection, clock) => {
       end: new dbtypes.CollectionKey(collection, number.HIGHEST_UINT32)
     })
   )
-  return utils.mergeOps(_updateOpClocksHelper(ydb, ops), clock === 0)
+  return utils.mergeOps(_updateOpClocksHelper(ydb, ops).map(entry => entry.value), clock === 0)
 }
 
 /**
- * @template {operations.OpTypeId} TYPE
+ * @template {operations.OpTypeIds} TYPE
+ * @param {Ydb} ydb
+ * @param {string} collection
+ * @param {string} doc
+ * @param {TYPE} type
+ * @param {number} clock
+ * @return {Promise<Array<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>>>}
+ */
+export const getDocOpsEntries = async (ydb, collection, doc, type, clock) => {
+  const entries = await ydb.db.transact(tr =>
+    tr.tables.oplog.indexes.doc.getEntries({
+      start: new dbtypes.DocKey(type, collection, doc, clock),
+      end: new dbtypes.DocKey(type, collection, doc, number.HIGHEST_UINT32)
+    })
+  )
+  return /** @type {Array<dbtypes.OpValue<any>>} */ (_updateOpClocksHelper(ydb, entries).map(entry => entry.value))
+}
+
+/**
+ * @template {operations.OpTypeIds} TYPE
  * @param {Ydb} ydb
  * @param {string} collection
  * @param {string} doc
@@ -93,53 +114,58 @@ export const getDocOps = async (ydb, collection, doc, type, clock) => {
       end: new dbtypes.DocKey(type, collection, doc, number.HIGHEST_UINT32)
     })
   )
-  return /** @type {Array<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>>} */ (_updateOpClocksHelper(ydb, entries))
+  return /** @type {Array<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>>} */ (_updateOpClocksHelper(ydb, entries).map(entry => entry.value))
 }
 
 /**
+ * @template {operations.OpTypeIds} TYPE
  * @param {Ydb} ydb
  * @param {string} collection
  * @param {string} doc
- * @return {Promise<dbtypes.OpValue<operations.OpNoPermission>|null>}
+ * @param {TYPE} type
+ * @return {Promise<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>|null>}
  */
-export const getLastNoPerm = async (ydb, collection, doc) => {
+export const getDocOpsLast = async (ydb, collection, doc, type) => {
   const entries = await ydb.db.transact(tr =>
     tr.tables.oplog.indexes.doc.getEntries({
-      start: new dbtypes.DocKey(operations.OpNoPermissionType, collection, doc, 0),
-      end: new dbtypes.DocKey(operations.OpNoPermissionType, collection, doc, number.HIGHEST_UINT32),
+      start: new dbtypes.DocKey(type, collection, doc, 0),
+      end: new dbtypes.DocKey(type, collection, doc, number.HIGHEST_UINT32),
       limit: 1,
       reverse: true
     })
   )
-  return /** @type {dbtypes.OpValue<operations.OpNoPermission>} */ (_updateOpClocksHelper(ydb, entries)[0]) || null
+  return /** @type {dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>} */ (_updateOpClocksHelper(ydb, entries)[0].value) || null
 }
 
 /**
+ * @template {operations.OpTypeIds} TYPE
  * @param {Ydb} ydb
  * @param {string} collection
  * @param {string} doc
- * @return {Promise<Array<dbtypes.OpValue<operations.OpYjsUpdate>>>}
+ * @param {TYPE} type
+ * @return {Promise<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>|null>}
  */
-export const getDocYjsUpdates = async (ydb, collection, doc) => getDocOps(ydb, collection, doc, operations.OpYjsUpdateType, 0)
+export const getDocOpsMerged = (ydb, collection, doc, type) => getDocOps(ydb, collection, doc, type, 0).then(ops => utils.mergeOps(ops, false)[0])
 
 /**
+ * @template {operations.OpTypeIds} TYPE
  * @param {Ydb} ydb
  * @param {string} collection
  * @param {string} doc
- * @return {Promise<Array<dbtypes.OpValue<operations.OpNoPermission>>>}
+ * @param {TYPE} type
+ * @return {Promise<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>|null>}
  */
-// @todo only get last op of this kind
-export const getDocNoPerm = async (ydb, collection, doc) => getDocOps(ydb, collection, doc, operations.OpNoPermissionType, 0)
-
-/**
- * @todo these kinds of requests can be cached
- *
- * @param {Ydb} ydb
- * @param {string} collection
- * @param {string} doc
- * @return {Promise<operations.OpPerm>}
- */
-export const getDocPerm = async (ydb, collection, doc) => getDocOps(ydb, collection, doc, operations.OpPermType, 0).then(ops => utils.mergeOps(ops, false)[0].op)
+export const mergeDocOps = (ydb, collection, doc, type) =>
+  ydb.db.transact(async tr => {
+    const merged = await getDocOpsMerged(ydb, collection, doc, type)
+    tr.tables.oplog.indexes.doc.removeRange({
+      start: new dbtypes.DocKey(type, collection, doc, 0),
+      end: new dbtypes.DocKey(type, collection, doc, number.HIGHEST_UINT32),
+      endExclusive: true
+    })
+    merged && tr.tables.oplog.add(merged)
+    return merged
+  })
 
 /**
  * @param {Array<dbtypes.DocKey>} noperms
@@ -219,7 +245,7 @@ export const confirmClientClock = async (ydb, clientid, collection, newClock, lo
  * @param {Ydb} ydb
  * @param {string} collection
  * @param {string} doc
- * @param {operations.AbstractOp} opv
+ * @param {operations.OpTypes} opv
  */
 export const addOp = async (ydb, collection, doc, opv) => {
   const op = await ydb.db.transact(async tr => {
@@ -235,6 +261,8 @@ export const addOp = async (ydb, collection, doc, opv) => {
 }
 
 /**
+ * @todo these helpers could be removed now.
+ *
  * @param {Ydb} ydb
  * @param {string} collection
  * @param {string} doc
@@ -308,7 +336,6 @@ export const applyRemoteOps = (ydb, ops, shouldFilter) => {
       const clocksKey = dbtypes.ClocksKey.decode(decoding.createDecoder(buffer.fromBase64(encClocksKey)))
       tr.tables.clocks.set(clocksKey, clockValue)
     })
-    console.log(ydb.dbname, 'wrote ops', ops)
   })
   /**
    * @type {Map<string, Map<string, Array<dbtypes.OpValue>>>}

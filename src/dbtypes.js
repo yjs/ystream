@@ -7,7 +7,7 @@ import * as operations from './operations.js'
 import * as binary from 'lib0/binary'
 
 /**
- * @template {operations.AbstractOp} [OP=operations.AbstractOp]
+ * @template {operations.OpTypes} [OP=any]
  * @implements isodb.IEncodable
  */
 export class OpValue {
@@ -43,7 +43,7 @@ export class OpValue {
    * @return {isodb.IEncodable}
    */
   static decode (decoder) {
-    const type = /** @type {operations.OpTypeId} */ (decoding.readUint8(decoder))
+    const type = /** @type {operations.OpTypeIds} */ (decoding.readUint8(decoder))
     const clientFkey = decoding.readVarUint(decoder)
     const clientClockFkey = decoding.readVarUint(decoder)
     const collection = decoding.readVarString(decoder)

@@ -36,7 +36,6 @@ const readOps = (decoder, ydb, comm) => {
   for (let i = 0; i < numOfOps; i++) {
     ops.push(/** @type {dbtypes.OpValue} */ (dbtypes.OpValue.decode(decoder)))
   }
-  console.log(ydb.dbname, 'applying ops', ops)
   return actions.applyRemoteOps(ydb, ops, comm.synced)
 }
 
@@ -63,7 +62,6 @@ const readSynced = async (_encoder, decoder, ydb, comm) => {
   comm.synced = true
   // @todo this should only fire sync if all Comms are synced
   if (array.from(ydb.comms.values()).every(comm => comm.synced)) {
-    console.log(ydb.dbname, 'synced')
     ydb.emit('sync', [])
   }
 }
