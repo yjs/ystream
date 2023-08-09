@@ -1,5 +1,7 @@
 import * as dbtypes from './dbtypes.js'
 import * as isodb from 'isodb'
+import * as string from 'lib0/string'
+import * as sha256 from 'lib0/hash/sha256'
 
 /**
  * @todos
@@ -42,6 +44,34 @@ export const def = {
     unsyncedDocs: {
       key: dbtypes.UnsyncedKey,
       value: isodb.NoValue
+    },
+    users: {
+      key: isodb.AutoKey,
+      value: isodb.StringValue,
+      indexes: {
+        hash: {
+          /**
+           * @param {isodb.AutoKey} _k
+           * @param {isodb.StringValue} v
+           */
+          mapper: (_k, v) => new isodb.BinaryKey(sha256.digest(string.encodeUtf8(v.v))),
+          key: isodb.BinaryKey
+        }
+      }
+    },
+    devices: {
+      key: isodb.AutoKey,
+      value: dbtypes.DeviceKey,
+      indexes: {
+        device: {
+          key: dbtypes.DeviceKey,
+          /**
+           * @param {isodb.AutoKey} _k
+           * @param {dbtypes.DeviceKey} v
+           */
+          mapper: (_k, v) => v
+        }
+      }
     }
   }
 }

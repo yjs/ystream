@@ -10,11 +10,11 @@ import { emptyUpdate, getTestClients } from './helpers.js'
  */
 export const testBasic = async tc => {
   const { ydb1 } = await getTestClients(tc)
-  actions.addYjsUpdate(ydb1, 'collection', 'docname', emptyUpdate)
-  actions.addYjsUpdate(ydb1, 'collection', 'docname', emptyUpdate)
-  actions.addYjsUpdate(ydb1, 'collection', 'docname', emptyUpdate)
-  actions.addYjsUpdate(ydb1, 'collection2', 'docname', emptyUpdate)
-  actions.addYjsUpdate(ydb1, 'collection', 'docname2', emptyUpdate)
+  actions.addOp(ydb1, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
+  actions.addOp(ydb1, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
+  actions.addOp(ydb1, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
+  actions.addOp(ydb1, 'collection2', 'docname', new operations.OpYjsUpdate(emptyUpdate))
+  actions.addOp(ydb1, 'collection', 'docname2', new operations.OpYjsUpdate(emptyUpdate))
   const docOps = await actions.getDocOps(ydb1, 'collection', 'docname', operations.OpYjsUpdateType, 0)
   t.assert(docOps.length === 3)
   const allOps = await actions.getOps(ydb1, 0)

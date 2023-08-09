@@ -8,7 +8,7 @@ import * as operations from './operations.js'
  */
 
 export const RequestDocumentType = 0
-export const ResendDocumentType = 0
+export const ResendDocumentType = 1
 
 /**
  * @abstract

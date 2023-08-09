@@ -28,7 +28,7 @@ export const bindydoc = async (ydb, collection, doc, ydoc) => {
         // @todo iterate through opened documents in ydb and apply update
         // Thought: iterating through the docs should be the default
       }
-      actions.addYjsUpdate(ydb, collection, doc, update)
+      actions.addOp(ydb, collection, doc, new operations.OpYjsUpdate(update))
     }
   })
   /* c8 ignore start */

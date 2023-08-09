@@ -261,24 +261,6 @@ export const addOp = async (ydb, collection, doc, opv) => {
 }
 
 /**
- * @todo these helpers could be removed now.
- *
- * @param {Ydb} ydb
- * @param {string} collection
- * @param {string} doc
- * @param {Uint8Array} update
- */
-export const addYjsUpdate = async (ydb, collection, doc, update) => addOp(ydb, collection, doc, new operations.OpYjsUpdate(update))
-
-/**
- * @param {Ydb} ydb
- * @param {string} collection
- * @param {string} doc
- * @param {operations.OpPerm} perm
- */
-export const addPermissionChange = async (ydb, collection, doc, perm) => addOp(ydb, collection, doc, perm)
-
-/**
  * @param {Ydb} ydb
  */
 export const getClocks = ydb =>

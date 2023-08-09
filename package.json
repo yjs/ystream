@@ -60,11 +60,11 @@
     "c8": "^7.13.0",
     "concurrently": "^7.5.0",
     "standard": "^17.0.0",
-    "typescript": "^5.0.4"
+    "typescript": "^5.1.6"
   },
   "dependencies": {
     "isodb": "^0.1.6",
-    "lib0": "^0.2.76",
+    "lib0": "^0.2.80",
     "yjs": "^13.5.43"
   }
 }

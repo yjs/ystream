@@ -1,7 +1,7 @@
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import * as error from 'lib0/error'
-import * as isodb from 'isodb'
+import * as isodb from 'isodb' // eslint-disable-line
 import * as requests from './messages.js'
 import * as operations from './operations.js'
 import * as binary from 'lib0/binary'
@@ -52,8 +52,6 @@ export class OpValue {
     return new OpValue(clientFkey, clientClockFkey, collection, doc, op)
   }
 }
-
-export const CertificateValue = isodb.StringKey
 
 /**
  * @todo create a "Request" type that is used in protocol
@@ -153,6 +151,38 @@ export class CollectionKey {
     const collection = decoding.readVarString(decoder)
     const opid = decoding.readUint32(decoder)
     return new CollectionKey(collection, opid)
+  }
+}
+
+/**
+ * @implements isodb.IEncodable
+ */
+export class DeviceKey {
+  /**
+   * @param {number} userid
+   * @param {Uint8Array} dguid
+   */
+  constructor (userid, dguid) {
+    this.userid = userid
+    this.dguid = dguid
+  }
+
+  /**
+   * @param {encoding.Encoder} encoder
+   */
+  encode (encoder) {
+    encoding.writeUint32(encoder, this.userid)
+    encoding.writeUint8Array(encoder, this.dguid)
+  }
+
+  /**
+   * @param {decoding.Decoder} decoder
+   * @return {isodb.IEncodable}
+   */
+  static decode (decoder) {
+    const userid = decoding.readUint32(decoder)
+    const dguid = decoding.readTailAsUint8Array(decoder)
+    return new DeviceKey(userid, dguid)
   }
 }
 
