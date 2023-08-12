@@ -2,6 +2,8 @@ import * as dbtypes from './dbtypes.js'
 import * as isodb from 'isodb'
 import * as string from 'lib0/string'
 import * as sha256 from 'lib0/hash/sha256'
+import * as webcrypto from 'lib0/webcrypto'
+import * as oaep from 'lib0/crypto/rsa-oaep'
 
 /**
  * @todos
@@ -47,17 +49,7 @@ export const def = {
     },
     users: {
       key: isodb.AutoKey,
-      value: isodb.StringValue,
-      indexes: {
-        hash: {
-          /**
-           * @param {isodb.AutoKey} _k
-           * @param {isodb.StringValue} v
-           */
-          mapper: (_k, v) => new isodb.BinaryKey(sha256.digest(string.encodeUtf8(v.v))),
-          key: isodb.BinaryKey
-        }
-      }
+      value: isodb.CryptoKeyValue
     },
     devices: {
       key: isodb.AutoKey,
@@ -72,6 +64,16 @@ export const def = {
           mapper: (_k, v) => v
         }
       }
+    }
+  },
+  objects: {
+    db: {
+      version: isodb.AnyValue
+    },
+    user: {
+      public: isodb.CryptoKeyValue,
+      private: isodb.CryptoKeyValue,
+      device: dbtypes.DeviceKey
     }
   }
 }
@@ -112,4 +114,21 @@ export const def = {
  * @param {string} dbname
  */
 export const createDb = dbname =>
-  isodb.openDB(dbname, def)
+  isodb.openDB(dbname, def).then(async idb => {
+    await idb.transact(async tr => {
+      const version = await tr.objects.db.get('version')
+      if (version === undefined) {
+        // init
+        tr.objects.db.set('version', 0)
+        const dguid = new Uint8Array(64)
+        webcrypto.getRandomValues(dguid)
+        const { publicKey, privateKey } = await oaep.generateKeyPair()
+        tr.objects.user.set('device', new dbtypes.DeviceKey(0, dguid))
+        tr.objects.user.set('public', publicKey)
+        tr.objects.user.set('private', privateKey)
+        const user = new dbtypes.User(await oaep.exportKey(publicKey))
+        actions.addUser(ydb, user)
+      }
+    })
+    return idb
+  })

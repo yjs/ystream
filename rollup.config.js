@@ -18,6 +18,5 @@ export default [{
     file: './dist/test.cjs',
     format: 'cjs',
     sourcemap: true
-  },
-  external: ['isomorphic.js']
+  }
 }]

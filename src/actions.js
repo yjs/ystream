@@ -353,3 +353,14 @@ export const applyRemoteOps = (ydb, ops, shouldFilter) => {
   })
   return p
 }
+
+
+/**
+ * @param {Ydb} ydb
+ * @param {CryptoKey} publicKey
+ */
+export const addUser = (ydb, publicKey) =>
+  ydb.db.transact(async tr => {
+    tr.tables.users.add(_value)
+  })
+

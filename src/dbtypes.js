@@ -187,6 +187,34 @@ export class DeviceKey {
 }
 
 /**
+ * @implements isodb.IEncodable
+ */
+export class User {
+  /**
+   * @param {Uint8Array} publicKey
+   */
+  constructor (publicKey) {
+    this.pkey = publicKey
+  }
+
+  /**
+   * @param {encoding.Encoder} encoder
+   */
+  encode (encoder) {
+    encoding.writeVarUint8Array(encoder, this.pkey)
+  }
+
+  /**
+   * @param {decoding.Decoder} decoder
+   * @return {isodb.IEncodable}
+   */
+  static decode (decoder) {
+    const pkey = decoding.readVarUint8Array(decoder)
+    return new User(pkey)
+  }
+}
+
+/**
  * @todo remove doc parameter
  * @implements isodb.IEncodable
  */
