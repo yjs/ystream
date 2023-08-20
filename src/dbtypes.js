@@ -5,6 +5,7 @@ import * as isodb from 'isodb' // eslint-disable-line
 import * as requests from './messages.js'
 import * as operations from './operations.js'
 import * as binary from 'lib0/binary'
+import * as sha256 from 'lib0/hash/sha256'
 
 /**
  * @template {operations.OpTypes} [OP=any]
@@ -157,22 +158,27 @@ export class CollectionKey {
 /**
  * @implements isodb.IEncodable
  */
-export class DeviceKey {
+export class User {
   /**
-   * @param {number} userid
-   * @param {Uint8Array} dguid
+   * @param {Uint8Array} publicKey
    */
-  constructor (userid, dguid) {
-    this.userid = userid
-    this.dguid = dguid
+  constructor (publicKey) {
+    this.pkey = publicKey
+    this._hash = null
+  }
+
+  /**
+   * @return {Uint8Array}
+   */
+  get hash () {
+    return this._hash || (this._hash = sha256.digest(this.pkey))
   }
 
   /**
    * @param {encoding.Encoder} encoder
    */
   encode (encoder) {
-    encoding.writeUint32(encoder, this.userid)
-    encoding.writeUint8Array(encoder, this.dguid)
+    encoding.writeVarUint8Array(encoder, this.pkey)
   }
 
   /**
@@ -180,21 +186,28 @@ export class DeviceKey {
    * @return {isodb.IEncodable}
    */
   static decode (decoder) {
-    const userid = decoding.readUint32(decoder)
-    const dguid = decoding.readTailAsUint8Array(decoder)
-    return new DeviceKey(userid, dguid)
+    const pkey = decoding.readVarUint8Array(decoder)
+    return new User(pkey)
   }
 }
 
 /**
  * @implements isodb.IEncodable
  */
-export class User {
+export class DeviceClaim {
   /**
    * @param {Uint8Array} publicKey
    */
-  constructor (publicKey) {
+  constructor (hash, publicDeviceKey) {
     this.pkey = publicKey
+    this._hash = null
+  }
+
+  /**
+   * @return {Uint8Array}
+   */
+  get hash () {
+    return this._hash || (this._hash = sha256.digest(this.pkey))
   }
 
   /**

@@ -1,9 +1,10 @@
 import * as dbtypes from './dbtypes.js'
 import * as isodb from 'isodb'
-import * as string from 'lib0/string'
-import * as sha256 from 'lib0/hash/sha256'
+import * as jose from 'lib0/crypto/jwt'
 import * as webcrypto from 'lib0/webcrypto'
 import * as oaep from 'lib0/crypto/rsa-oaep'
+import * as buffer from 'lib0/buffer'
+import * as time from 'lib0/time'
 
 /**
  * @todos
@@ -49,7 +50,17 @@ export const def = {
     },
     users: {
       key: isodb.AutoKey,
-      value: isodb.CryptoKeyValue
+      value: dbtypes.User,
+      indexes: {
+        hash: {
+          key: Uint8Array, // sha256 digest of public key
+          /**
+           * @param {isodb.AutoKey} _k
+           * @param {dbtypes.User} user
+           */
+          mapper: (_k, user) => user.hash
+        }
+      }
     },
     devices: {
       key: isodb.AutoKey,
@@ -72,8 +83,12 @@ export const def = {
     },
     user: {
       public: isodb.CryptoKeyValue,
+      private: isodb.CryptoKeyValue
+    },
+    device: {
+      public: isodb.CryptoKeyValue,
       private: isodb.CryptoKeyValue,
-      device: dbtypes.DeviceKey
+      proof: isodb.StringValue // jwt containing device.public, signed by user.private
     }
   }
 }
@@ -111,6 +126,27 @@ export const def = {
  */
 
 /**
+ * # Auth & Credentials
+ *
+ * A user generates a public-private key that must be kept private. This could also be done by a
+ * backend. Once a malicious user has access to the private key, the user is compromised and can no
+ * longer sync p2p. Hence it must be kept in a secure vault. The users private key can also be
+ * stored / generated only when needed.
+ *
+ * A user is gives access to a document / collection. The sha256 digest of the public key is used
+ * for identification.
+ *
+ * A devices proves that it acts as a certain user using a signed message of the user (using the
+ * private key).
+ *
+ * A device hence must have a different public-private key pair. The user signs the public key of
+ * the device (similar to json web token).
+ *
+ * A future implementation could also require that other authorities (e.g. auth providers) sign
+ * the device key for advanced security. We can also require that signed tokens expire.
+ */
+
+/**
  * @param {string} dbname
  */
 export const createDb = dbname =>
@@ -122,12 +158,19 @@ export const createDb = dbname =>
         tr.objects.db.set('version', 0)
         const dguid = new Uint8Array(64)
         webcrypto.getRandomValues(dguid)
-        const { publicKey, privateKey } = await oaep.generateKeyPair()
-        tr.objects.user.set('device', new dbtypes.DeviceKey(0, dguid))
-        tr.objects.user.set('public', publicKey)
-        tr.objects.user.set('private', privateKey)
-        const user = new dbtypes.User(await oaep.exportKey(publicKey))
-        actions.addUser(ydb, user)
+        const { publicKey: publicUserKey, privateKey: privateUserKey } = await oaep.generateKeyPair()
+        const user = new dbtypes.User(buffer.encodeAny(await oaep.exportKeyJwk(publicUserKey)))
+        tr.objects.user.set('public', publicUserKey)
+        tr.objects.user.set('private', privateUserKey)
+        tr.tables.users.add(user)
+        const { publicKey: publicDeviceKey, privateKey: privateDeviceKey } = await oaep.generateKeyPair()
+        tr.objects.device.set('private', privateDeviceKey)
+        tr.objects.device.set('public', publicDeviceKey)
+        tr.objects.device.set('proof', await jose.encodeJwt(privateUserKey, {
+          iat: time.getUnixTime(),
+          iss: buffer.toBase64(user.hash),
+          sub: await oaep.exportKeyJwk(publicDeviceKey)
+        }))
       }
     })
     return idb
