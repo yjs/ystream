@@ -64,15 +64,15 @@ export const def = {
     },
     devices: {
       key: isodb.AutoKey,
-      value: dbtypes.DeviceKey,
+      value: dbtypes.DeviceClaim,
       indexes: {
-        device: {
-          key: dbtypes.DeviceKey,
+        hash: {
+          key: isodb.BinaryKey,
           /**
            * @param {isodb.AutoKey} _k
-           * @param {dbtypes.DeviceKey} v
+           * @param {dbtypes.DeviceClaim} v
            */
-          mapper: (_k, v) => v
+          mapper: (_k, v) => v.hash
         }
       }
     }
@@ -88,7 +88,7 @@ export const def = {
     device: {
       public: isodb.CryptoKeyValue,
       private: isodb.CryptoKeyValue,
-      proof: isodb.StringValue // jwt containing device.public, signed by user.private
+      proof: isodb.JwtValue// jwt containing device.public, signed by user.private
     }
   }
 }
@@ -166,11 +166,12 @@ export const createDb = dbname =>
         const { publicKey: publicDeviceKey, privateKey: privateDeviceKey } = await oaep.generateKeyPair()
         tr.objects.device.set('private', privateDeviceKey)
         tr.objects.device.set('public', publicDeviceKey)
-        tr.objects.device.set('proof', await jose.encodeJwt(privateUserKey, {
+        const jwt = await jose.encodeJwt(privateUserKey, {
           iat: time.getUnixTime(),
           iss: buffer.toBase64(user.hash),
           sub: await oaep.exportKeyJwk(publicDeviceKey)
-        }))
+        })
+        tr.objects.device.set('proof', jwt)
       }
     })
     return idb

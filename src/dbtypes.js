@@ -196,10 +196,10 @@ export class User {
  */
 export class DeviceClaim {
   /**
-   * @param {Uint8Array} publicKey
+   * @param {Uint8Array} publicDeviceKey
    */
-  constructor (hash, publicDeviceKey) {
-    this.pkey = publicKey
+  constructor (publicDeviceKey) {
+    this.pkey = publicDeviceKey
     this._hash = null
   }
 
@@ -223,7 +223,7 @@ export class DeviceClaim {
    */
   static decode (decoder) {
     const pkey = decoding.readVarUint8Array(decoder)
-    return new User(pkey)
+    return new DeviceClaim(pkey)
   }
 }
 
