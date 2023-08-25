@@ -5,7 +5,11 @@ import * as isodb from 'isodb' // eslint-disable-line
 import * as requests from './messages.js'
 import * as operations from './operations.js'
 import * as binary from 'lib0/binary'
+import * as string from 'lib0/string'
 import * as sha256 from 'lib0/hash/sha256'
+import * as jose from 'lib0/crypto/jwt'
+import * as json from 'lib0/json'
+import * as oaep from 'lib0/crypto/rsa-oaep'
 
 /**
  * @template {operations.OpTypes} [OP=any]
@@ -193,28 +197,41 @@ export class User {
 
 /**
  * @implements isodb.IEncodable
+ * @extends isodb.JwtValue<{ iat: number, sub: string }>
  */
-export class DeviceClaim {
+export class DeviceClaim extends isodb.JwtValue {
   /**
-   * @param {Uint8Array} publicDeviceKey
+   * @note It should never be necessary for you to call the constructor!
+   * Use the static `DeviceClaim.create` method instead.
+   *
+   * @param {string} v
+   * @param {Uint8Array} phash
    */
-  constructor (publicDeviceKey) {
-    this.pkey = publicDeviceKey
-    this._hash = null
+  constructor (v, phash) {
+    super(v)
+    this.hash = phash
+    /**
+     * Public key of the device
+     * @type {Promise<CryptoKey>?}
+     */
+    this._dpkey = null
   }
 
   /**
-   * @return {Uint8Array}
+   * Public key of the device
    */
-  get hash () {
-    return this._hash || (this._hash = sha256.digest(this.pkey))
+  get dpkey () {
+    return this._dpkey || (this._dpkey = oaep.importKeyJwk(json.parse(this.unsafeDecode().payload.sub)))
   }
 
   /**
-   * @param {encoding.Encoder} encoder
+   * @param {string} jwt
+   * @param {CryptoKey} userPublicKey
    */
-  encode (encoder) {
-    encoding.writeVarUint8Array(encoder, this.pkey)
+  static async fromJwt (jwt, userPublicKey) {
+    const { payload } = await jose.verifyJwt(userPublicKey, jwt)
+    const hash = sha256.digest(string.encodeUtf8(payload.sub))
+    return new this(jwt, hash)
   }
 
   /**
@@ -222,8 +239,10 @@ export class DeviceClaim {
    * @return {isodb.IEncodable}
    */
   static decode (decoder) {
-    const pkey = decoding.readVarUint8Array(decoder)
-    return new DeviceClaim(pkey)
+    const jwt = decoding.readVarString(decoder)
+    const payload = jose.unsafeDecode(jwt).payload
+    const hash = sha256.digest(string.encodeUtf8(payload.sub))
+    return new this(jwt, hash)
   }
 }
 

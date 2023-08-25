@@ -1,10 +1,13 @@
 import * as dbtypes from './dbtypes.js'
 import * as isodb from 'isodb'
 import * as jose from 'lib0/crypto/jwt'
+import * as string from 'lib0/string'
+import * as sha256 from 'lib0/hash/sha256'
 import * as webcrypto from 'lib0/webcrypto'
 import * as oaep from 'lib0/crypto/rsa-oaep'
 import * as buffer from 'lib0/buffer'
 import * as time from 'lib0/time'
+import * as json from 'lib0/json'
 
 /**
  * @todos
@@ -88,7 +91,9 @@ export const def = {
     device: {
       public: isodb.CryptoKeyValue,
       private: isodb.CryptoKeyValue,
-      proof: isodb.JwtValue// jwt containing device.public, signed by user.private
+      // proof.iss: the base64 encoded value of the users publicKey.
+      // proof.sub: the json encoded key of the jwt of the device.
+      claim: dbtypes.DeviceClaim
     }
   }
 }
@@ -166,12 +171,19 @@ export const createDb = dbname =>
         const { publicKey: publicDeviceKey, privateKey: privateDeviceKey } = await oaep.generateKeyPair()
         tr.objects.device.set('private', privateDeviceKey)
         tr.objects.device.set('public', publicDeviceKey)
+        const jwtSub = json.stringify(await oaep.exportKeyJwk(publicDeviceKey)) // should be encoded so we have a hash
+        // @todo add type definition to isodb.jwtValue
+        // @todo add expiration date `exp`
         const jwt = await jose.encodeJwt(privateUserKey, {
-          iat: time.getUnixTime(),
           iss: buffer.toBase64(user.hash),
-          sub: await oaep.exportKeyJwk(publicDeviceKey)
+          iat: time.getUnixTime(),
+          sub: jwtSub
         })
-        tr.objects.device.set('proof', jwt)
+        // Don't call the constructor manually. This is okay only here. Use DeviceClaim.fromJwt
+        // instead.
+        const deviceclaim = new dbtypes.DeviceClaim(jwt, sha256.digest(string.encodeUtf8(jwtSub)))
+        tr.objects.device.set('claim', deviceclaim)
+        tr.tables.devices.add(deviceclaim)
       }
     })
     return idb
