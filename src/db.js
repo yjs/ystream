@@ -120,7 +120,7 @@ export const def = {
  */
 
 /**
- * # The NoPerm op
+ * # The NoPerm op (possibly rename to PlaceHolder(noperm))
  * When a "server" mustn't send an update to a client because it lacks permission, we send
  * a NoPerm op instead with the current client/clock of the "server".
  * Once the client receives access, the client requests the content of that document from other
@@ -149,6 +149,29 @@ export const def = {
  *
  * A future implementation could also require that other authorities (e.g. auth providers) sign
  * the device key for advanced security. We can also require that signed tokens expire.
+ */
+
+/**
+ * # Security Extensions
+ *
+ * - There should be a record of claims that a user generated. The user should be able to untrust
+ * claims.
+ */
+
+/**
+ * # Protocol
+ * 1. Exchange Credentials (User.publickKey + DeviceClaim)
+ *   - Approach1: From now on all messages must be encrypted using the public key of the remote device
+ *   - Approach2: If the connection is secure, we can auth by sending a proof that the other side
+ *   must decrypt.
+ * 2. Request collections [collectionname:[clientid:lastclock], ..]
+ *   - Send back all documents as "Placeholder(unsent)" op, but include all permission ops.
+ *   - User requests all Placeholder(unsent) ops individually (if they have access, X at a time, but
+ *     possible to retrieve Y early). getdoc[clientid:clock|null]
+ *   -- An alternative implementation could only retrieve documents when they are opened.
+ *   -- Check if user has access to collection
+ *   -- If user doesn't have access to a specific document, send NoPerm op instead.
+ *      The user can rerequest the document itself.
  */
 
 /**

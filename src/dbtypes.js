@@ -1,3 +1,7 @@
+/**
+ * @todo add "type" fields to applicable types reserved for future usage
+ */
+
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import * as error from 'lib0/error'
@@ -182,6 +186,7 @@ export class User {
    * @param {encoding.Encoder} encoder
    */
   encode (encoder) {
+    encoding.writeVarUint(encoder, 0)
     encoding.writeVarUint8Array(encoder, this.pkey)
   }
 
@@ -190,6 +195,7 @@ export class User {
    * @return {isodb.IEncodable}
    */
   static decode (decoder) {
+    decoding.readVarUint(decoder) // read a "type" byte that is reserved for future usage
     const pkey = decoding.readVarUint8Array(decoder)
     return new User(pkey)
   }
