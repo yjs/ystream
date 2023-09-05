@@ -285,10 +285,8 @@ export const getClocks = ydb =>
 /**
  * @param {Ydb} ydb
  * @param {Array<dbtypes.OpValue>} ops
- * @param {boolean} shouldFilter Filter operations with older client-id - this should only be true if the connection is
- *                               synced
  */
-export const applyRemoteOps = (ydb, ops, shouldFilter) => {
+export const applyRemoteOps = (ydb, ops) => {
   const p = ydb.db.transact(async tr => {
     /**
      * Maps from encoded(collection/doc/clientid) to clock
@@ -310,7 +308,7 @@ export const applyRemoteOps = (ydb, ops, shouldFilter) => {
      */
     const clientClockEntries = new Map()
     // 1. Filter ops that have already been applied 2. apply ops 3. update clocks table
-    await promise.all((!shouldFilter ? ops : ops.filter(op => op.clock >= (clocks.get(encodeClocksKey(op.client, op.collection)) || 0))).map(async op => {
+    await promise.all(ops.filter(op => op.clock >= (clocks.get(encodeClocksKey(op.client, op.collection)) || 0)).map(async op => {
       const localClock = await tr.tables.oplog.add(op)
       clientClockEntries.set(encodeClocksKey(op.client, op.collection), new dbtypes.ClientClockValue(op.clock, localClock.v))
     }))

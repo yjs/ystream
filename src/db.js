@@ -25,6 +25,8 @@ export const def = {
       key: isodb.AutoKey,
       value: dbtypes.OpValue,
       indexes: {
+        // @todo add `shallow index: {collection}/{autokey}/{doc}/{opid}` for computing the shallow (nocontent)
+        // sync
         doc: {
           /**
            * @param {isodb.AutoKey} k

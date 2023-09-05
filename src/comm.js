@@ -119,7 +119,7 @@ class MockCommInstance {
    * @param {Peer} peer
    */
   async receive (message, peer) {
-    const reply = await protocol.readMessage(decoding.createDecoder(message), this.ydb, this)
+    const reply = await protocol.readMessage(encoding.createEncoder(), decoding.createDecoder(message), this.ydb, this)
     if (reply) {
       peer.receive(encoding.toUint8Array(reply), this)
     }
