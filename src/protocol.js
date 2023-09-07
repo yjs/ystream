@@ -5,10 +5,13 @@ import * as decoding from 'lib0/decoding'
 import * as error from 'lib0/error'
 import * as array from 'lib0/array'
 import * as actions from './actions.js'
+import * as map from 'lib0/map'
+import * as promise from 'lib0/promise'
 
 const messageOps = 0
 const messageRequestOps = 1
 const messageSynced = 2
+const messageInfo = 3
 
 /**
  * @param {encoding.Encoder} encoder
@@ -68,7 +71,7 @@ const readSynced = async (_encoder, decoder, ydb, comm) => {
 
 /**
  * @param {encoding.Encoder} encoder
- * @param {string} collection
+ * @param {string} collection Use "*" to request all collections
  * @param {number} clock
  */
 export const writeRequestOps = (encoder, collection, clock) => {
@@ -85,9 +88,42 @@ export const writeRequestOps = (encoder, collection, clock) => {
 const readRequestOps = async (encoder, decoder, ydb) => {
   const collection = decoding.readVarString(decoder)
   const clock = decoding.readVarUint(decoder)
-  const ops = await actions.getCollectionOps(ydb, collection, clock)
+  const ops = await (collection === '*' ? actions.getOps(ydb, clock) : actions.getCollectionOps(ydb, collection, clock))
   writeOps(encoder, ops)
   writeSynced(encoder, collection, ops.length > 0 ? ops[ops.length - 1].clock + 1 : 0)
+}
+
+/**
+ * @todo should contain device auth, exchange of certificates, some verification by challenge, ..
+ * @param {encoding.Encoder} encoder
+ * @param {Ydb} ydb
+ */
+export const writeInfo = (encoder, ydb) => {
+  encoding.writeUint8(encoder, messageInfo)
+  encoding.writeVarUint(encoder, ydb.clientid)
+}
+
+/**
+ * @todo maybe rename to SyncStep1?
+ * @param {encoding.Encoder} encoder
+ * @param {decoding.Decoder} decoder
+ * @param {Ydb} ydb
+ */
+const readInfo = async (encoder, decoder, ydb) => {
+  const clientid = decoding.readVarUint(decoder)
+  // we respond by asking for the registered collections
+  if (ydb.syncsEverything) {
+    const clock = await actions.getClock(ydb, clientid, null)
+    writeRequestOps(encoder, '*', clock)
+  } else {
+    await ydb.db.transact(() =>
+      promise.all(map.map(ydb.collections, (_, collectionname) =>
+        actions.getClock(ydb, clientid, collectionname).then(clock => {
+          writeRequestOps(encoder, collectionname, clock)
+        })
+      ))
+    )
+  }
 }
 
 /**
@@ -110,6 +146,10 @@ export const readMessage = async (encoder, decoder, ydb, comm) => {
       }
       case messageSynced: {
         await readSynced(encoder, decoder, ydb, comm)
+        break
+      }
+      case messageInfo: {
+        await readInfo(encoder, decoder, ydb)
         break
       }
       /* c8 ignore next 3 */

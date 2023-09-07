@@ -20,6 +20,7 @@ import * as uws from 'uws'
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import * as protocol from '../protocol.js'
+import * as actions from '../actions.js'
 import { openYdb } from '../index.js'
 
 const expectedBufferedAmount = 512 * 1024 // 512kb
@@ -68,7 +69,7 @@ class WSClient {
   }
 }
 
-const ydb = await openYdb('websocket-server', [], {})
+const ydb = await openYdb('.ydb-websocket-server', ['*'], {})
 
 const port = 9000
 
@@ -80,6 +81,9 @@ uws.App({}).ws('/*', /** @type {uws.WebSocketBehavior<{ client: WSClient }>} */ 
   /* Handlers */
   open: (ws) => {
     ws.getUserData().client = new WSClient(ws)
+    ws.send(encoding.encode(encoder => {
+      protocol.writeInfo(encoder, ydb)
+    }))
   },
   message: (ws, message) => {
     const client = ws.getUserData().client

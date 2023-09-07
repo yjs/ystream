@@ -8,6 +8,7 @@ import { Observable } from 'lib0/observable'
 import * as random from 'lib0/random'
 import * as actions from './actions.js'
 import * as operations from './operations.js'
+import * as array from 'lib0/array'
 
 /**
  * @typedef {Object} YdbConf
@@ -31,6 +32,12 @@ export class Ydb extends Observable {
      * @type {isodb.IDB<typeof db.def>}
      */
     this.db = _db
+    /**
+     * Whether to sync all collections (i.e. `collections = ['*']`)
+     *
+     * @type {boolean}
+     */
+    this.syncsEverything = array.some(collections, c => c === '*')
     /**
      * @type {Map<string,Map<string,Set<Y.Doc>>>}
      */

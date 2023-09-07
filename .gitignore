@@ -4,3 +4,4 @@ dist
 .vscode
 .test_dbs
 test.html
+.ydb-websocket-server
