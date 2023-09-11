@@ -17,7 +17,10 @@
     "strict": true,
     "noImplicitAny": true,
     "moduleResolution": "node",
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "paths": {
+      "ydb/utils/websocket": ["./src/utils/websocket.browser.js"]
+    }
   },
   "include": ["./src/**/*.js", "./tests/**/*.js"],
   "exclude": ["./dist"]
