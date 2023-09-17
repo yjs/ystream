@@ -6,7 +6,7 @@ import * as queue from 'lib0/queue'
 import { ObservableV2 } from 'lib0/observable'
 import * as math from 'lib0/math'
 import * as comm from '../comm.js' // eslint-disable-line
-import { Ydb } from '../ydb' // eslint-disable-line
+import { Ydb } from '../ydb.js' // eslint-disable-line
 import * as dbtypes from '../dbtypes.js' // eslint-disable-line
 
 /**
@@ -159,7 +159,7 @@ class WebSocketCommInstance extends ObservableV2 {
 /**
  * @implements {comm.CommConfiguration}
  */
-export class MockComm {
+export class WebSocketComm {
   /**
    * @param {string} url
    */

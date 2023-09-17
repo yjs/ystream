@@ -3,6 +3,8 @@ import * as t from 'lib0/testing' // eslint-disable-line
 import * as Ydb from '../src/index.js'
 import * as Y from 'yjs'
 import * as array from 'lib0/array'
+import * as wscomm from '../src/comms/websocket.js'
+import '../src/comms/websocket-server.js'
 
 /**
  * @param {t.TestCase} tc
@@ -28,7 +30,7 @@ class TestClients {
     const dbname = `${this.name}-${this.cliNum++}`
     await Ydb.deleteYdb(dbname)
     const ydb = await Ydb.openYdb(dbname, ['c1', 'c2', 'c3'], {
-      comms: [new Ydb.MockComm()]
+      comms: [new wscomm.WebSocketComm('ws://localhost:9000')]
     })
     this.clients.push(ydb)
     return ydb

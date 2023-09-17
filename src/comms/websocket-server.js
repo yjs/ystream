@@ -36,6 +36,7 @@ class WSClient {
      */
     this.nextOps = []
     this._isDraining = false
+    this.isDestroyed = false
   }
 
   /**
@@ -59,13 +60,14 @@ class WSClient {
       }
       const message = encoding.toUint8Array(encoder)
       bufferedAmount += message.byteLength
-      this.ws.send(message, true)
+      !this.isDestroyed && this.ws.send(message, true)
     }
     this._isDraining = false
   }
 
   destroy () {
     this.nextOps = []
+    this.isDestroyed = true
   }
 }
 
@@ -86,10 +88,11 @@ uws.App({}).ws('/*', /** @type {uws.WebSocketBehavior<{ client: WSClient }>} */ 
     }))
   },
   message: (ws, message) => {
+    const decoder = decoding.createDecoder(new Uint8Array(message.slice(0))) // copy buffer because uws will reuse the memory space
     const client = ws.getUserData().client
     client.queueMessage(async (encoder) => {
-      const reply = await protocol.readMessage(encoder, decoding.createDecoder(new Uint8Array(message)), ydb, null)
-      if (reply) {
+      const reply = await protocol.readMessage(encoder, decoder, ydb, null)
+      if (reply && !client.isDestroyed) {
         ws.send(encoding.toUint8Array(reply))
       }
       return false
