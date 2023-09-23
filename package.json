@@ -31,6 +31,8 @@
     "gentesthtml": "npx 0gentesthtml --script ./tests/index.js > test.html",
     "debug:browser": "npm run gentesthtml && npx 0serve -o test.html",
     "debug:node": "node --inspect-brk tests/index.js",
+    "ws-server": "node ./src/comms/websocket-server.js",
+    "ws-server:inspect": "node --inspect-brk ./src/comms/websocket-server.js",
     "test": "c8 --100 node tests/index.js",
     "test-coverage": "npm run clean && npm run lint && npm run dist && nyc --check-coverage --lines 100 --branches 100 --functions 100 --statements 100 node --unhandled-rejections=strict ./dist/test.cjs --repetition-time 50 --production",
     "test-inspect": "node --inspect-brk --unhandled-rejections=strict ./test.js --repetition-time 50 --production",

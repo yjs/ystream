@@ -4,7 +4,11 @@ import * as Ydb from '../src/index.js'
 import * as Y from 'yjs'
 import * as array from 'lib0/array'
 import * as wscomm from '../src/comms/websocket.js'
-import '../src/comms/websocket-server.js'
+import * as env from 'lib0/environment'
+
+if (env.isNode) {
+  await import('../src/comms/websocket-server.js')
+}
 
 /**
  * @param {t.TestCase} tc

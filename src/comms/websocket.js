@@ -82,7 +82,7 @@ const addReadMessage = async (comm, m) => {
     if (m === null) break
     const reply = await protocol.readMessage(encoding.createEncoder(), decoding.createDecoder(m.v), comm.ydb, comm)
     if (reply) {
-      comm.ws?.send(encoding.toUint8Array(reply))
+      comm.ws?.send(encoding.toUint8Array(reply).buffer)
     }
   }
 }
