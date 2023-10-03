@@ -16,7 +16,7 @@ import * as operations from './operations.js'
  * @param {Y.Doc} ydoc - should be an empty doc
  */
 export const bindydoc = async (ydb, collection, doc, ydoc) => {
-  const bcroom = `${ydb.dbname}#${collection}#${doc}`
+  const bcroom = `ydb#${ydb.dbname}#${collection}#${doc}`
   // const currentClock = ..
   ydoc.on('updateV2', /** @type {function(Uint8Array, any)} */ (update, origin) => {
     if (origin !== ydb) {

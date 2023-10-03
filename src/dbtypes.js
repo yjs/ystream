@@ -28,6 +28,7 @@ export class OpValue {
    * @param {OP} op
    */
   constructor (client, clock, collection, doc, op) {
+    this.localClock = 0
     this.client = client
     this.clock = clock
     this.collection = collection

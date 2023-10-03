@@ -20,11 +20,14 @@ import * as uws from 'uws'
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import * as protocol from '../protocol.js'
-import * as actions from '../actions.js'
+import * as comm from '../comm.js' // eslint-disable-line
 import { openYdb } from '../index.js'
 
 const expectedBufferedAmount = 512 * 1024 // 512kb
 
+/**
+ * @implements comm.Comm
+ */
 class WSClient {
   /**
    * @param {uws.WebSocket<{ client: WSClient }>} ws
@@ -37,6 +40,14 @@ class WSClient {
     this.nextOps = []
     this._isDraining = false
     this.isDestroyed = false
+    this.synced = false
+  }
+
+  /**
+   * @param {Uint8Array} message
+   */
+  send (message) {
+    !this.isDestroyed && this.ws.send(message, true)
   }
 
   /**
@@ -61,7 +72,7 @@ class WSClient {
       if (encoding.hasContent(encoder)) {
         const message = encoding.toUint8Array(encoder)
         bufferedAmount += message.byteLength
-        !this.isDestroyed && this.ws.send(message, true)
+        !this.isDestroyed && this.send(message)
       }
     }
     this._isDraining = false
@@ -84,16 +95,17 @@ uws.App({}).ws('/*', /** @type {uws.WebSocketBehavior<{ client: WSClient }>} */ 
   idleTimeout: 60,
   /* Handlers */
   open: (ws) => {
-    ws.getUserData().client = new WSClient(ws)
-    ws.send(encoding.encode(encoder => {
+    const client = new WSClient(ws)
+    ws.getUserData().client = client
+    client.send(encoding.encode(encoder => {
       protocol.writeInfo(encoder, ydb)
-    }), true)
+    }))
   },
   message: (ws, message) => {
     const decoder = decoding.createDecoder(new Uint8Array(message.slice(0))) // copy buffer because uws will reuse the memory space
     const client = ws.getUserData().client
     client.queueMessage(async (encoder) => {
-      const reply = await protocol.readMessage(encoder, decoder, ydb, null)
+      const reply = await protocol.readMessage(encoder, decoder, ydb, client)
       if (reply && !client.isDestroyed) {
         ws.send(encoding.toUint8Array(reply), true)
       }

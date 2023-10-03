@@ -81,16 +81,47 @@ export const writeRequestOps = (encoder, collection, clock) => {
 }
 
 /**
+ * @param {Ydb} ydb
+ * @param {import('./comm.js').Comm} comm - this is used to subscribe to messages
+ * @param {string} collection
+ * @param {number} nextExpectedClock
+ */
+const _subscribeConnToOps = (ydb, comm, collection, nextExpectedClock) => {
+  /**
+   * @param {Array<dbtypes.OpValue>} ops
+   * @param {boolean} _isSynced
+   */
+  const opsConsumer = (ops, _isSynced) => {
+    if (comm.isDestroyed) {
+      ydb.off('ops', opsConsumer)
+      return
+    }
+    ops = ops.filter(op => collection === '*' || op.collection === collection)
+    if (ops.length > 0) {
+      comm.send(encoding.encode(encoder =>
+        writeOps(encoder, ops)
+      ))
+    }
+  }
+  ydb.consumeOps(nextExpectedClock, opsConsumer)
+}
+
+/**
  * @param {encoding.Encoder} encoder
  * @param {decoding.Decoder} decoder
  * @param {Ydb} ydb
+ * @param {import('./comm.js').Comm} comm - this is used to subscribe to messages
  */
-const readRequestOps = async (encoder, decoder, ydb) => {
+const readRequestOps = async (encoder, decoder, ydb, comm) => {
   const collection = decoding.readVarString(decoder)
   const clock = decoding.readVarUint(decoder)
   const ops = await (collection === '*' ? actions.getOps(ydb, clock) : actions.getCollectionOps(ydb, collection, clock))
+  const nextExpectedClock = ops.length > 0 ? ops[ops.length - 1].clock + 1 : 0
   writeOps(encoder, ops)
-  writeSynced(encoder, collection, ops.length > 0 ? ops[ops.length - 1].clock + 1 : 0)
+  writeSynced(encoder, collection, nextExpectedClock)
+  // this needs to be handled by a separate function, so the observer doesn't keep the above
+  // variables in scope
+  _subscribeConnToOps(ydb, comm, collection, nextExpectedClock)
 }
 
 /**
@@ -120,6 +151,7 @@ const readInfo = async (encoder, decoder, ydb) => {
       promise.all(map.map(ydb.collections, (_, collectionname) =>
         actions.getClock(ydb, clientid, collectionname).then(clock => {
           writeRequestOps(encoder, collectionname, clock)
+          return clock
         })
       ))
     )
@@ -130,7 +162,7 @@ const readInfo = async (encoder, decoder, ydb) => {
  * @param {encoding.Encoder} encoder
  * @param {decoding.Decoder} decoder
  * @param {Ydb} ydb
- * @param {import('./comm.js').Comm|null} comm - this is used to set the "synced" property
+ * @param {import('./comm.js').Comm} comm - this is used to set the "synced" property
  */
 export const readMessage = async (encoder, decoder, ydb, comm) => {
   do {
@@ -141,7 +173,7 @@ export const readMessage = async (encoder, decoder, ydb, comm) => {
         break
       }
       case messageRequestOps: {
-        await readRequestOps(encoder, decoder, ydb)
+        await readRequestOps(encoder, decoder, ydb, comm)
         break
       }
       case messageSynced: {

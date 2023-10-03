@@ -7,7 +7,6 @@ import { ObservableV2 } from 'lib0/observable'
 import * as math from 'lib0/math'
 import * as comm from '../comm.js' // eslint-disable-line
 import { Ydb } from '../ydb.js' // eslint-disable-line
-import * as dbtypes from '../dbtypes.js' // eslint-disable-line
 
 /**
  * @param {WebSocketCommInstance} comm
@@ -101,6 +100,7 @@ class WebSocketCommInstance extends ObservableV2 {
   constructor (ydb, url) {
     super()
     this.synced = false
+    this.isDestroyed = false
     this.comm = true
     this.ydb = ydb
     this.url = url
@@ -123,6 +123,7 @@ class WebSocketCommInstance extends ObservableV2 {
   }
 
   destroy () {
+    this.isDestroyed = true
     this.shouldConnect = false
     this.wsconnected = false
     this.wsconnecting = false
@@ -133,26 +134,15 @@ class WebSocketCommInstance extends ObservableV2 {
   /**
    * @todo this should only be called once we know this connection is synced and that ops is the
    * next expected op. Otherwise, fall back to unsynced and sync all local ops to backend.
-   * @param {Array<dbtypes.OpValue>} ops
-   */
-  broadcast (ops) {
-    const message = encoding.encode(encoder => protocol.writeOps(encoder, ops))
-    if (this.ws && this.wsconnected) {
-      // otherwise, the message is going to be synced by the sync protocol
-      this.ws.send(message)
-    }
-  }
-
-  /**
-   * @todo is this even necessary?
    * @param {Uint8Array} message
-   * @param {comm.Peer} peer
    */
-  async receive (message, peer) {
-    const reply = await protocol.readMessage(encoding.createEncoder(), decoding.createDecoder(message), this.ydb, this)
-    if (reply) {
-      peer.receive(encoding.toUint8Array(reply), this)
+  send (message) {
+    if (this.ws && this.wsconnected) {
+      // @todo handle the case that message could not be sent
+      this.ws.send(message)
+      return
     }
+    this.destroy()
   }
 }
 

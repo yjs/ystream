@@ -3,8 +3,6 @@ import * as db from './db.js'
 import { Ydb } from './ydb.js'
 export { Ydb } from './ydb.js'
 
-export { MockComm } from './comm.js'
-
 export const deleteYdb = isodb.deleteDB
 
 /**
