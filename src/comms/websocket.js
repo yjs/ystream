@@ -6,25 +6,36 @@ import * as queue from 'lib0/queue'
 import { ObservableV2 } from 'lib0/observable'
 import * as math from 'lib0/math'
 import * as comm from '../comm.js' // eslint-disable-line
+import * as logging from 'lib0/logging'
 import { Ydb } from '../ydb.js' // eslint-disable-line
+
+const _log = logging.createModuleLogger('ydb/websocket')
+/**
+ * @param {WebSocketCommInstance} comm
+ * @param {string} type
+ * @param {...any} args
+ */
+const log = (comm, type, ...args) => _log(logging.PURPLE, `(local=${comm.ydb.clientid.toString(36).slice(0, 4)},remote=${comm.clientid.toString(36).slice(0, 4)}) `, logging.ORANGE, '[' + type + '] ', logging.GREY, ...args)
 
 /**
  * @param {WebSocketCommInstance} comm
  */
 const setupWS = comm => {
   if (comm.shouldConnect && comm.ws === null) {
+    log(comm, 'setup')
     const websocket = new WebSocket(comm.url)
     comm.ws = websocket
     websocket.binaryType = 'arraybuffer'
     comm.ws = websocket
     comm.wsconnecting = true
     comm.wsconnected = false
-    comm.synced = false
+    comm.synced = new Set()
 
     websocket.onmessage = (event) => {
       addReadMessage(comm, new Uint8Array(event.data))
     }
-    websocket.onerror = (event) => {
+    websocket.onerror = /** @param {any} event */ (event) => {
+      log(comm, 'error', event)
       comm.emit('connection-error', [/** @type {ErrorEvent} */(event), comm])
     }
     websocket.onclose = (event) => {
@@ -33,7 +44,7 @@ const setupWS = comm => {
       comm.wsconnecting = false
       if (comm.wsconnected) {
         comm.wsconnected = false
-        comm.synced = false
+        comm.synced = new Set()
         comm.emit('status', [{
           status: 'disconnected'
         }, comm])
@@ -41,6 +52,7 @@ const setupWS = comm => {
         comm.wsUnsuccessfulReconnects++
       }
       comm.emit('connection-close', [event, comm])
+      log(comm, 'close', 'close-code: ', event.code)
       // Start with no reconnect timeout and increase timeout by
       // using exponential backoff starting with 100ms
       setTimeout(
@@ -53,6 +65,7 @@ const setupWS = comm => {
       )
     }
     websocket.onopen = () => {
+      log(comm, 'open')
       comm.wsconnecting = false
       comm.wsconnected = true
       comm.wsUnsuccessfulReconnects = 0
@@ -99,11 +112,15 @@ class WebSocketCommInstance extends ObservableV2 {
    */
   constructor (ydb, url) {
     super()
-    this.synced = false
+    /**
+     * @type {Set<string>}
+     */
+    this.synced = new Set()
     this.isDestroyed = false
     this.comm = true
     this.ydb = ydb
     this.url = url
+    this.clientid = -1
     /**
      * @type {WebSocket|null}
      */
@@ -112,7 +129,6 @@ class WebSocketCommInstance extends ObservableV2 {
     this.wsconnecting = false
     this.wsconnected = false
     this.wsUnsuccessfulReconnects = 0
-    this.synced = false
     this.maxBackoffTime = 60000
     /**
      * @type {queue.Queue<queue.QueueValue<Uint8Array>>}

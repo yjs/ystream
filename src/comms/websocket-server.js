@@ -33,6 +33,7 @@ class WSClient {
    * @param {uws.WebSocket<{ client: WSClient }>} ws
    */
   constructor (ws) {
+    this.clientid = -1
     this.ws = ws
     /**
      * @type {Array<function (encoding.Encoder): Promise<boolean>>}
@@ -40,7 +41,10 @@ class WSClient {
     this.nextOps = []
     this._isDraining = false
     this.isDestroyed = false
-    this.synced = false
+    /**
+     * @type {Set<string>}
+     */
+    this.synced = new Set()
   }
 
   /**

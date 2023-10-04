@@ -7,6 +7,16 @@ import * as array from 'lib0/array'
 import * as actions from './actions.js'
 import * as map from 'lib0/map'
 import * as promise from 'lib0/promise'
+import * as logging from 'lib0/logging'
+
+const _log = logging.createModuleLogger('ydb/protocol')
+/**
+ * @param {Ydb} ydb
+ * @param {import('./comm.js').Comm} comm
+ * @param {string} type
+ * @param {...any} args
+ */
+const log = (ydb, comm, type, ...args) => _log(logging.PURPLE, `(local=${ydb.clientid.toString(36).slice(0, 4)},remote=${comm.clientid.toString(36).slice(0, 4)}) `, logging.ORANGE, '[' + type + '] ', logging.GREY, ...args)
 
 const messageOps = 0
 const messageRequestOps = 1
@@ -28,8 +38,9 @@ export const writeOps = (encoder, ops) => {
 /**
  * @param {decoding.Decoder} decoder
  * @param {Ydb} ydb
+ * @param {import('./comm.js').Comm} comm
  */
-const readOps = (decoder, ydb) => {
+const readOps = (decoder, ydb, comm) => {
   const numOfOps = decoding.readVarUint(decoder)
   /**
    * @type {Array<dbtypes.OpValue>}
@@ -38,6 +49,7 @@ const readOps = (decoder, ydb) => {
   for (let i = 0; i < numOfOps; i++) {
     ops.push(/** @type {dbtypes.OpValue} */ (dbtypes.OpValue.decode(decoder)))
   }
+  log(ydb, comm, 'Ops', `received ${ops.length} ops`)
   return actions.applyRemoteOps(ydb, ops)
 }
 
@@ -59,13 +71,18 @@ export const writeSynced = (encoder, collection, nextClock) => {
  * @param {import('./comm.js').Comm|null} comm
  */
 const readSynced = async (_encoder, decoder, ydb, comm) => {
-  decoding.readVarString(decoder) // collection
+  const collection = decoding.readVarString(decoder) // collection
   decoding.readVarUint(decoder) // confirmed clock
   if (comm == null) return
-  comm.synced = true
-  // @todo this should only fire sync if all Comms are synced
-  if (array.from(ydb.comms.values()).every(comm => comm.synced)) {
+  comm.synced.add(collection)
+  ydb.syncedCollections.add(collection)
+  if (ydb.isSynced) return
+  if (collection === '*' || array.from(ydb.collections.keys()).every(cname => ydb.syncedCollections.has(cname))) {
+    ydb.isSynced = true
+    log(ydb, comm, 'Synced', 'emitted event')
     ydb.emit('sync', [])
+  } else {
+    log(ydb, comm, 'Synced', ` synced "${collection}" .. waiting for other collections`)
   }
 }
 
@@ -75,6 +92,7 @@ const readSynced = async (_encoder, decoder, ydb, comm) => {
  * @param {number} clock
  */
 export const writeRequestOps = (encoder, collection, clock) => {
+  console.log('times i requested', requested++)
   encoding.writeUint8(encoder, messageRequestOps)
   encoding.writeVarString(encoder, collection)
   encoding.writeVarUint(encoder, clock)
@@ -117,6 +135,7 @@ const readRequestOps = async (encoder, decoder, ydb, comm) => {
   const clock = decoding.readVarUint(decoder)
   const ops = await (collection === '*' ? actions.getOps(ydb, clock) : actions.getCollectionOps(ydb, collection, clock))
   const nextExpectedClock = ops.length > 0 ? ops[ops.length - 1].clock + 1 : 0
+  log(ydb, comm, 'RequestOps', `requested "${collection}"`)
   writeOps(encoder, ops)
   writeSynced(encoder, collection, nextExpectedClock)
   // this needs to be handled by a separate function, so the observer doesn't keep the above
@@ -134,15 +153,20 @@ export const writeInfo = (encoder, ydb) => {
   encoding.writeVarUint(encoder, ydb.clientid)
 }
 
+let requested = 1
+
 /**
  * @todo maybe rename to SyncStep1?
  * @param {encoding.Encoder} encoder
  * @param {decoding.Decoder} decoder
+ * @param {import('./comm.js').Comm} comm
  * @param {Ydb} ydb
  */
-const readInfo = async (encoder, decoder, ydb) => {
+const readInfo = async (encoder, decoder, ydb, comm) => {
   const clientid = decoding.readVarUint(decoder)
-  // we respond by asking for the registered collections
+  comm.clientid = clientid
+  log(ydb, comm, 'Info', ydb.syncsEverything)
+  // we respond by asking for the registered collejtions
   if (ydb.syncsEverything) {
     const clock = await actions.getClock(ydb, clientid, null)
     writeRequestOps(encoder, '*', clock)
@@ -169,7 +193,7 @@ export const readMessage = async (encoder, decoder, ydb, comm) => {
     const messageType = decoding.readUint8(decoder)
     switch (messageType) {
       case messageOps: {
-        await readOps(decoder, ydb)
+        await readOps(decoder, ydb, comm)
         break
       }
       case messageRequestOps: {
@@ -181,7 +205,7 @@ export const readMessage = async (encoder, decoder, ydb, comm) => {
         break
       }
       case messageInfo: {
-        await readInfo(encoder, decoder, ydb)
+        await readInfo(encoder, decoder, ydb, comm)
         break
       }
       /* c8 ignore next 3 */

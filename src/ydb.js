@@ -108,14 +108,12 @@ export class Ydb extends ObservableV2 {
     this.collections = new Map()
     collections.forEach(collectionName => { this.collections.set(collectionName, new Map()) })
     /**
-     * @type {Set<import('./comm.js').Comm>}
+     * @type {Set<string>}
      */
-    this.comms = new Set()
+    this.syncedCollections = new Set()
+    this.isSynced = false
     this.whenSynced = promise.create(resolve => {
       this.once('sync', resolve)
-    })
-    comms.forEach(comm => {
-      this.comms.add(comm.init(this))
     })
     this.clientid = random.uint53()
     /**
@@ -141,6 +139,13 @@ export class Ydb extends ObservableV2 {
         const ops = await actions.getOps(this, opids[0])
         emitOpsEvent(this, ops)
       }
+    })
+    /**
+     * @type {Set<import('./comm.js').Comm>}
+     */
+    this.comms = new Set()
+    comms.forEach(comm => {
+      this.comms.add(comm.init(this))
     })
   }
 

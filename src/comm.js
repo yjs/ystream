@@ -19,7 +19,13 @@ import * as error from 'lib0/error'
  * @interface
  */
 export class Comm {
-  get synced () { return false }
+  get clientid () { return -1 }
+  set clientid (_v) { error.methodUnimplemented() }
+  /**
+   * Set of synced collections
+   * @type {Set<string>}
+   */
+  get synced () { return new Set() }
   set synced (_v) { error.methodUnimplemented() }
   get isDestroyed () { return false }
 
