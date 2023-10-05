@@ -79,7 +79,7 @@ const readSynced = async (_encoder, decoder, ydb, comm) => {
   if (ydb.isSynced) return
   if (collection === '*' || array.from(ydb.collections.keys()).every(cname => ydb.syncedCollections.has(cname))) {
     ydb.isSynced = true
-    log(ydb, comm, 'Synced', 'emitted event')
+    log(ydb, comm, 'Synced', `synced "${collection}" .. emitted sync event`)
     ydb.emit('sync', [])
   } else {
     log(ydb, comm, 'Synced', ` synced "${collection}" .. waiting for other collections`)
@@ -92,7 +92,6 @@ const readSynced = async (_encoder, decoder, ydb, comm) => {
  * @param {number} clock
  */
 export const writeRequestOps = (encoder, collection, clock) => {
-  console.log('times i requested', requested++)
   encoding.writeUint8(encoder, messageRequestOps)
   encoding.writeVarString(encoder, collection)
   encoding.writeVarUint(encoder, clock)
@@ -114,7 +113,7 @@ const _subscribeConnToOps = (ydb, comm, collection, nextExpectedClock) => {
       ydb.off('ops', opsConsumer)
       return
     }
-    ops = ops.filter(op => collection === '*' || op.collection === collection)
+    if (collection !== '*') ops = ops.filter(op => op.collection === collection)
     if (ops.length > 0) {
       comm.send(encoding.encode(encoder =>
         writeOps(encoder, ops)
@@ -134,9 +133,9 @@ const readRequestOps = async (encoder, decoder, ydb, comm) => {
   const collection = decoding.readVarString(decoder)
   const clock = decoding.readVarUint(decoder)
   const ops = await (collection === '*' ? actions.getOps(ydb, clock) : actions.getCollectionOps(ydb, collection, clock))
-  const nextExpectedClock = ops.length > 0 ? ops[ops.length - 1].clock + 1 : 0
   log(ydb, comm, 'RequestOps', `requested "${collection}"`)
-  writeOps(encoder, ops)
+  const nextExpectedClock = ops.length > 0 ? ops[ops.length - 1].clock + 1 : 0
+  ops.length > 0 && writeOps(encoder, ops)
   writeSynced(encoder, collection, nextExpectedClock)
   // this needs to be handled by a separate function, so the observer doesn't keep the above
   // variables in scope
@@ -152,8 +151,6 @@ export const writeInfo = (encoder, ydb) => {
   encoding.writeUint8(encoder, messageInfo)
   encoding.writeVarUint(encoder, ydb.clientid)
 }
-
-let requested = 1
 
 /**
  * @todo maybe rename to SyncStep1?

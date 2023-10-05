@@ -30,7 +30,6 @@ const _sortOpsHelper = (a, b) => a.localClock - b.localClock
  */
 const _emitOpsEvent = (ydb, ops) => {
   if (ops.length === 0) {
-    console.log('weird??')
     return
   }
   const eclock = ydb._eclock
@@ -137,7 +136,7 @@ export class Ydb extends ObservableV2 {
     this._esub = bc.subscribe('ydb#' + this.dbname, /** @param {Array<number>} opids */ async (opids, origin) => {
       if (origin !== this) {
         const ops = await actions.getOps(this, opids[0])
-        emitOpsEvent(this, ops)
+        _emitOpsEvent(this, ops)
       }
     })
     /**

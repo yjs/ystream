@@ -310,7 +310,7 @@ export const applyRemoteOps = (ydb, ops) => {
      */
     const clientClockEntries = new Map()
     // 1. Filter ops that have already been applied 2. apply ops 3. update clocks table
-    await promise.all(ops.filter(op => op.clock >= (clocks.get(encodeClocksKey(op.client, op.collection)) || 0)).map(async op => {
+    await promise.all(ops.filter(op => op.clock > (clocks.get(encodeClocksKey(op.client, op.collection)) || 0)).map(async op => {
       const localClock = await tr.tables.oplog.add(op)
       op.localClock = localClock.v
       clientClockEntries.set(encodeClocksKey(op.client, op.collection), new dbtypes.ClientClockValue(op.clock, localClock.v))
@@ -319,6 +319,7 @@ export const applyRemoteOps = (ydb, ops) => {
       const clocksKey = dbtypes.ClocksKey.decode(decoding.createDecoder(buffer.fromBase64(encClocksKey)))
       tr.tables.clocks.set(clocksKey, clockValue)
     })
+    emitOpsEvent(ydb, ops)
   })
   /**
    * @type {Map<string, Map<string, Array<dbtypes.OpValue>>>}
