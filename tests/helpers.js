@@ -7,6 +7,13 @@ import * as wscomm from '../src/comms/websocket.js'
 import * as env from 'lib0/environment'
 
 if (env.isNode) {
+  const fs = await import('fs')
+  try {
+    fs.rmSync('./.test_dbs', { recursive: true })
+  } catch (e) {}
+  try {
+    fs.rmSync('./.ydb-websocket-server', { recursive: true })
+  } catch (e) {}
   await import('../src/comms/websocket-server.js')
 }
 

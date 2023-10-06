@@ -74,8 +74,10 @@ const _emitOpsEvent = (ydb, ops) => {
  * @param {Array<dbtypes.OpValue>} ops
  */
 export const emitOpsEvent = (ydb, ops) => {
-  _emitOpsEvent(ydb, ops)
-  bc.publish('ydb#' + ydb.dbname, ops.map(op => op.localClock), ydb)
+  if (ops.length > 0) {
+    _emitOpsEvent(ydb, ops)
+    bc.publish('ydb#' + ydb.dbname, ops.map(op => op.localClock), ydb)
+  }
 }
 
 /**
@@ -114,7 +116,7 @@ export class Ydb extends ObservableV2 {
     this.whenSynced = promise.create(resolve => {
       this.once('sync', resolve)
     })
-    this.clientid = random.uint53()
+    this.clientid = random.uint32()
     /**
      * @type {number|null}
      */

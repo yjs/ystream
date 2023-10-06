@@ -3,6 +3,8 @@ import * as promise from 'lib0/promise'
 
 import * as Ydb from '../src/index.js'
 import * as helpers from './helpers.js'
+import * as actions from '../src/actions.js'
+import * as operations from '../src/operations.js'
 
 /**
  * @param {string} testname
@@ -57,10 +59,10 @@ export const testComm = async tc => {
   const ydoc3 = ydb3.getYdoc('c1', 'ydoc')
   await ydoc3.whenLoaded
   t.compare(ydoc3.getMap().get('k'), 'v2')
-  // console.log(await actions.getClocks(ydb1), 'clientid: ', ydb1.clientid)
-  // console.log(await actions.getClocks(ydb2), 'clientid: ', ydb2.clientid)
-  // console.log(await actions.getClocks(ydb3), 'clientid: ', ydb3.clientid)
-  // console.log('updates', ydb1.clientid, await actions.getDocOps(ydb1, 'c1', 'ydoc', operations.OpYjsUpdateType, 0))
-  // console.log('updates 2', ydb2.clientid, await actions.getDocOps(ydb2, 'c1', 'ydoc', operations.OpYjsUpdateType, 0))
-  // console.log('updates 3', ydb3.clientid, await actions.getDocOps(ydb3, 'c1', 'ydoc', operations.OpYjsUpdateType, 0))
+  console.log(await actions.getClocks(ydb1), 'clientid: ', ydb1.clientid)
+  console.log(await actions.getClocks(ydb2), 'clientid: ', ydb2.clientid)
+  console.log(await actions.getClocks(ydb3), 'clientid: ', ydb3.clientid)
+  console.log('updates', ydb1.clientid, await actions.getDocOps(ydb1, 'c1', 'ydoc', operations.OpYjsUpdateType, 0))
+  console.log('updates 2', ydb2.clientid, await actions.getDocOps(ydb2, 'c1', 'ydoc', operations.OpYjsUpdateType, 0))
+  console.log('updates 3', ydb3.clientid, await actions.getDocOps(ydb3, 'c1', 'ydoc', operations.OpYjsUpdateType, 0))
 }
