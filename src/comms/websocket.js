@@ -30,7 +30,6 @@ const setupWS = comm => {
     comm.wsconnecting = true
     comm.wsconnected = false
     comm.synced = new Set()
-
     websocket.onmessage = (event) => {
       addReadMessage(comm, new Uint8Array(event.data))
     }
