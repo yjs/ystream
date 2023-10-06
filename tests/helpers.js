@@ -5,6 +5,12 @@ import * as Y from 'yjs'
 import * as array from 'lib0/array'
 import * as wscomm from '../src/comms/websocket.js'
 import * as env from 'lib0/environment'
+import * as random from 'lib0/random'
+
+/**
+ * New test runs shouldn't reuse old data
+ */
+const randTestRunName = random.uint32().toString(32).slice(0, 8)
 
 if (env.isNode) {
   const fs = await import('fs')
@@ -12,15 +18,15 @@ if (env.isNode) {
     fs.rmSync('./.test_dbs', { recursive: true })
   } catch (e) {}
   try {
-    fs.rmSync('./.ydb-websocket-server', { recursive: true })
+    fs.rmSync(randTestRunName, { recursive: true })
   } catch (e) {}
-  await import('../src/comms/websocket-server.js')
+  await import('../bin/server.js')
 }
 
 /**
  * @param {t.TestCase} tc
  */
-const getDbName = tc => `.test_dbs/${tc.moduleName}/${tc.testName}`
+const getDbName = tc => `.test_dbs/${randTestRunName}/${tc.moduleName}/${tc.testName}`
 
 export const emptyUpdate = Y.encodeStateAsUpdateV2(new Y.Doc())
 
@@ -38,7 +44,7 @@ class TestClients {
   }
 
   async createClient () {
-    const dbname = `${this.name}-${this.cliNum++}`
+    const dbname = `.test_dbs/${randTestRunName}-${this.name}-${this.cliNum++}`
     await Ydb.deleteYdb(dbname)
     const ydb = await Ydb.openYdb(dbname, ['c1', 'c2', 'c3'], {
       comms: [new wscomm.WebSocketComm('ws://localhost:9000')]

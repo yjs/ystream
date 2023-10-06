@@ -21,7 +21,10 @@ import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import * as protocol from '../protocol.js'
 import * as comm from '../comm.js' // eslint-disable-line
-import { openYdb } from '../index.js'
+import * as ydb from '../index.js'
+import * as promise from 'lib0/promise'
+import * as error from 'lib0/error'
+import * as ran from 'lib0/random'
 
 const expectedBufferedAmount = 512 * 1024 // 512kb
 
@@ -88,43 +91,64 @@ class WSClient {
   }
 }
 
-const ydb = await openYdb('.ydb-websocket-server', ['*'], {})
+/**
+ * @param {Object} options
+ * @param {number} [options.port]
+ * @param {string} [options.dbname]
+ */
+export const createWSServer = async ({ port = 9000, dbname = '.ydb-websocket-server' } = {}) => {
+  const db = await ydb.openYdb(dbname, ['*'], {})
+  const server = new WSServer(db, port)
+  await server.ready
+  return server
+}
 
-const port = 9000
-
-uws.App({}).ws('/*', /** @type {uws.WebSocketBehavior<{ client: WSClient }>} */ ({
-  /* Options */
-  compression: uws.SHARED_COMPRESSOR,
-  maxPayloadLength: 70 * 1024 * 1024,
-  idleTimeout: 60,
-  /* Handlers */
-  open: (ws) => {
-    const client = new WSClient(ws)
-    ws.getUserData().client = client
-    client.send(encoding.encode(encoder => {
-      protocol.writeInfo(encoder, ydb)
-    }))
-  },
-  message: (ws, message) => {
-    const decoder = decoding.createDecoder(new Uint8Array(message.slice(0))) // copy buffer because uws will reuse the memory space
-    const client = ws.getUserData().client
-    client.queueMessage(async (encoder) => {
-      await protocol.readMessage(encoder, decoder, ydb, client)
-      return false
+class WSServer {
+  /**
+   * @param {ydb.Ydb} ydb
+   * @param {number} port
+   */
+  constructor (ydb, port) {
+    this.ready = promise.create((resolve, reject) => {
+      uws.App({}).ws('/*', /** @type {uws.WebSocketBehavior<{ client: WSClient }>} */ ({
+        /* Options */
+        compression: uws.SHARED_COMPRESSOR,
+        maxPayloadLength: 70 * 1024 * 1024,
+        idleTimeout: 60,
+        /* Handlers */
+        open: (ws) => {
+          const client = new WSClient(ws)
+          ws.getUserData().client = client
+          client.send(encoding.encode(encoder => {
+            protocol.writeInfo(encoder, ydb)
+          }))
+        },
+        message: (ws, message) => {
+          const decoder = decoding.createDecoder(new Uint8Array(message.slice(0))) // copy buffer because uws will reuse the memory space
+          const client = ws.getUserData().client
+          client.queueMessage(async (encoder) => {
+            await protocol.readMessage(encoder, decoder, ydb, client)
+            return false
+          })
+        },
+        drain: ws => {
+          ws.getUserData().client._drain()
+        },
+        close: ws => {
+          ws.getUserData().client.destroy()
+        }
+      })).any('/*', (res, _req) => {
+        res.end('Oh no, you found me 🫣')
+      }).listen(port, (token) => {
+        if (token) {
+          console.log('Listening to port ' + port)
+          resolve(port)
+        } else {
+          const m = 'Failed to listen to port ' + port
+          reject(error.create(m))
+          console.log(m)
+        }
+      })
     })
-  },
-  drain: ws => {
-    ws.getUserData().client._drain()
-  },
-  close: ws => {
-    ws.getUserData().client.destroy()
   }
-})).any('/*', (res, _req) => {
-  res.end('Oh no, you found me 🫣')
-}).listen(port, (token) => {
-  if (token) {
-    console.log('Listening to port ' + port)
-  } else {
-    console.log('Failed to listen to port ' + port)
-  }
-})
+}
