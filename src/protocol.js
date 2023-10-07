@@ -134,7 +134,7 @@ const readRequestOps = async (encoder, decoder, ydb, comm) => {
   const clock = decoding.readVarUint(decoder)
   const ops = await (collection === '*' ? actions.getOps(ydb, clock) : actions.getCollectionOps(ydb, collection, clock))
   log(ydb, comm, 'RequestOps', `requested "${collection}"`)
-  const nextExpectedClock = ops.length > 0 ? ops[ops.length - 1].clock + 1 : 0
+  const nextExpectedClock = ops.length > 0 ? ops[ops.length - 1].clock : 0
   ops.length > 0 && writeOps(encoder, ops)
   writeSynced(encoder, collection, nextExpectedClock)
   // this needs to be handled by a separate function, so the observer doesn't keep the above

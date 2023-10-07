@@ -3,6 +3,7 @@ import * as decoding from 'lib0/decoding'
 import * as error from 'lib0/error'
 import * as Y from 'yjs'
 import * as math from 'lib0/math'
+import * as array from 'lib0/array'
 
 /**
  * @typedef {import('isodb').IEncodable} IEncodable
@@ -254,7 +255,7 @@ export class OpYjsUpdate {
     } else {
       update = Y.mergeUpdatesV2(ops.map(op => op.op.update))
     }
-    const lastOp = ops[ops.length - 1]
+    const lastOp = array.fold(ops, ops[0], (o1, o2) => o1.localClock > o2.localClock ? o1 : o2)
     lastOp.op = new OpYjsUpdate(update)
     return lastOp
   }

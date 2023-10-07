@@ -54,6 +54,8 @@ export const testComm = async tc => {
   t.compare(ydoc2.getMap().get('k'), 'v1')
   ydoc1.getMap().set('k', 'v2')
   t.compare(ydoc1.getMap().get('k'), 'v2')
+  await helpers.waitDocsSynced(ydoc1, ydoc2)
+  t.compare(ydoc2.getMap().get('k'), 'v2')
   const ydb3 = await th.createClient()
   await ydb3.whenSynced
   const ydoc3 = ydb3.getYdoc('c1', 'ydoc')

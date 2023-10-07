@@ -17,10 +17,8 @@ if (env.isNode) {
   try {
     fs.rmSync('./.test_dbs', { recursive: true })
   } catch (e) {}
-  try {
-    fs.rmSync(randTestRunName, { recursive: true })
-  } catch (e) {}
-  await import('../bin/server.js')
+  const { createWSServer } = await import('../src/comms/websocket-server.js')
+  await createWSServer({ dbname: `.test_dbs/${randTestRunName}-server` })
 }
 
 /**

@@ -55,7 +55,7 @@ export const mergeOps = (ops, gc) => {
       mergedOps.push(..._mergeOpsHelper(docops, gc))
     })
   })
-  return mergedOps.reverse().sort((a, b) => a.clock - b.clock)
+  return mergedOps.reverse().sort((a, b) => a.localClock - b.localClock)
 }
 
 /**
