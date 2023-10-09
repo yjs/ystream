@@ -167,20 +167,25 @@ export class CollectionKey {
 /**
  * @implements isodb.IEncodable
  */
-export class User {
+export class UserIdentity {
   /**
-   * @param {Uint8Array} publicKey
+   * @param {string} encodedPublicKey stringified jwk
    */
-  constructor (publicKey) {
-    this.pkey = publicKey
+  constructor (encodedPublicKey) {
+    this.ekey = encodedPublicKey
     this._hash = null
+    this._publicKey = null
+  }
+
+  get publicKey () {
+    return this._publicKey || (this._publicKey = oaep.importKeyJwk(json.parse(this.ekey)))
   }
 
   /**
    * @return {Uint8Array}
    */
   get hash () {
-    return this._hash || (this._hash = sha256.digest(this.pkey))
+    return this._hash || (this._hash = sha256.digest(string.encodeUtf8(this.ekey)))
   }
 
   /**
@@ -188,7 +193,7 @@ export class User {
    */
   encode (encoder) {
     encoding.writeVarUint(encoder, 0)
-    encoding.writeVarUint8Array(encoder, this.pkey)
+    encoding.writeVarString(encoder, this.ekey)
   }
 
   /**
@@ -197,14 +202,63 @@ export class User {
    */
   static decode (decoder) {
     decoding.readVarUint(decoder) // read a "type" byte that is reserved for future usage
-    const pkey = decoding.readVarUint8Array(decoder)
-    return new User(pkey)
+    const pkey = decoding.readVarString(decoder)
+    return new UserIdentity(pkey)
   }
 }
 
 /**
  * @implements isodb.IEncodable
- * @extends isodb.JwtValue<{ iat: number, sub: string }>
+ */
+export class DeviceIdentity {
+  /**
+   * @param {string} encodedPublicKey stringified jwk
+   */
+  constructor (encodedPublicKey) {
+    this.ekey = encodedPublicKey
+    this._hash = null
+    this._publicKey = null
+  }
+
+  get publicKey () {
+    return this._publicKey || (this._publicKey = oaep.importKeyJwk(json.parse(this.ekey)))
+  }
+
+  /**
+   * @return {Uint8Array}
+   */
+  get hash () {
+    return this._hash || (this._hash = sha256.digest(string.encodeUtf8(this.ekey)))
+  }
+
+  /**
+   * @param {encoding.Encoder} encoder
+   */
+  encode (encoder) {
+    encoding.writeVarUint(encoder, 0)
+    encoding.writeVarString(encoder, this.ekey)
+  }
+
+  /**
+   * @param {decoding.Decoder} decoder
+   * @return {isodb.IEncodable}
+   */
+  static decode (decoder) {
+    decoding.readVarUint(decoder) // read a "type" byte that is reserved for future usage
+    const pkey = decoding.readVarString(decoder)
+    return new DeviceIdentity(pkey)
+  }
+}
+
+/**
+ * @typedef {Object} JwtDeviceClaim
+ * @property {number} JwtDeviceClaim.iat
+ * @property {string} JwtDeviceClaim.sub
+ */
+
+/**
+ * @implements isodb.IEncodable
+ * @extends isodb.JwtValue<JwtDeviceClaim>
  */
 export class DeviceClaim extends isodb.JwtValue {
   /**

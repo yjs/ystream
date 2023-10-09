@@ -12,13 +12,17 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "import": "./src/index.js",
-      "types": "./dist/src/index.d.ts"
+      "types": "./dist/src/index.d.ts",
+      "default": "./src/index.js"
     },
     "./utils/websocket": {
       "node": "./src/utils/websocket.node.js",
       "types": "./dist/src/utils/websocket.browser.js",
       "default": "./src/utils/websocket.browser.js"
+    },
+    "./api/authentication": {
+      "types": "./dist/src/api/authentication.js",
+      "default": "./src/api/authentication.js"
     }
   },
   "files": [

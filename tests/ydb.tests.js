@@ -43,8 +43,8 @@ export const testYdocLoad = async tc => {
  * @param {t.TestCase} tc
  */
 export const testComm = async tc => {
-  const th = helpers.createTestHelper(tc)
-  const [ydb1, ydb2] = await th.createClients(2)
+  const th = helpers.createTestScenario(tc)
+  const [{ ydb: ydb1 }, { ydb: ydb2 }] = await th.createClients(2)
   await promise.all([ydb1.whenSynced, ydb2.whenSynced])
   const ydoc1 = ydb1.getYdoc('c1', 'ydoc')
   ydoc1.getMap().set('k', 'v1')
@@ -56,7 +56,7 @@ export const testComm = async tc => {
   t.compare(ydoc1.getMap().get('k'), 'v2')
   await helpers.waitDocsSynced(ydoc1, ydoc2)
   t.compare(ydoc2.getMap().get('k'), 'v2')
-  const ydb3 = await th.createClient()
+  const { ydb: ydb3 } = await th.createClient()
   await ydb3.whenSynced
   const ydoc3 = ydb3.getYdoc('c1', 'ydoc')
   await ydoc3.whenLoaded

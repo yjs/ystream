@@ -10,7 +10,12 @@ import * as random from 'lib0/random'
 /**
  * New test runs shouldn't reuse old data
  */
-const randTestRunName = random.uint32().toString(32).slice(0, 8)
+const randTestRunName = random.uint32().toString(32)
+
+/**
+ * @type {import('../src/comms/websocket-server.js').WSServer|null}
+ */
+let server = null
 
 if (env.isNode) {
   const fs = await import('fs')
@@ -18,7 +23,7 @@ if (env.isNode) {
     fs.rmSync('./.test_dbs', { recursive: true })
   } catch (e) {}
   const { createWSServer } = await import('../src/comms/websocket-server.js')
-  await createWSServer({ dbname: `.test_dbs/${randTestRunName}-server` })
+  server = await createWSServer({ dbname: `.test_dbs/${randTestRunName}-server` })
 }
 
 /**
@@ -28,7 +33,22 @@ const getDbName = tc => `.test_dbs/${randTestRunName}/${tc.moduleName}/${tc.test
 
 export const emptyUpdate = Y.encodeStateAsUpdateV2(new Y.Doc())
 
-class TestClients {
+class TestClient {
+  /**
+   * @param {Ydb.Ydb} ydb
+   */
+  constructor (ydb) {
+    this.ydb = ydb
+    this.doc1 = ydb.getYdoc('c1', 'testdoc')
+  }
+}
+
+/**
+ * @typedef {Object} TestClientOptions
+ * @property {Array<string>} [TestClientOptions.collections]
+ */
+
+class TestScenario {
   /**
    * @param {string} name
    */
@@ -39,16 +59,20 @@ class TestClients {
      */
     this.clients = []
     this.cliNum = 0
+    this.server = server
   }
 
-  async createClient () {
+  /**
+   * @param {TestClientOptions} options
+   */
+  async createClient ({ collections = ['c1', 'c2', 'c3'] } = {}) {
     const dbname = `.test_dbs/${randTestRunName}-${this.name}-${this.cliNum++}`
     await Ydb.deleteYdb(dbname)
-    const ydb = await Ydb.openYdb(dbname, ['c1', 'c2', 'c3'], {
+    const ydb = await Ydb.openYdb(dbname, collections, {
       comms: [new wscomm.WebSocketComm('ws://localhost:9000')]
     })
     this.clients.push(ydb)
-    return ydb
+    return new TestClient(ydb)
   }
 
   /**
@@ -62,33 +86,7 @@ class TestClients {
 /**
  * @param {t.TestCase} tc
  */
-export const createTestHelper = tc => new TestClients(getDbName(tc))
-
-/**
- * @todo this should return a class that creates Ydb instances. Also rename this to Udb.
- *
- * @param {t.TestCase} tc
- */
-export const getTestClients = async tc => {
-  await promise.all([
-    Ydb.deleteYdb(getDbName(tc) + '-1'),
-    Ydb.deleteYdb(getDbName(tc) + '-2'),
-    Ydb.deleteYdb(getDbName(tc) + '-3'),
-    Ydb.deleteYdb(getDbName(tc) + '-4')
-  ])
-  const [ydb1, ydb2, ydb3, ydb4] = await promise.all([
-    Ydb.openYdb(getDbName(tc) + '-1', ['c1', 'c2', 'c3']),
-    Ydb.openYdb(getDbName(tc) + '-2', ['c1', 'c2', 'c3']),
-    Ydb.openYdb(getDbName(tc) + '-3', ['c1', 'c2', 'c3']),
-    Ydb.openYdb(getDbName(tc) + '-4', ['c1', 'c2', 'c3'])
-  ])
-  return {
-    ydb1,
-    ydb2,
-    ydb3,
-    ydb4
-  }
-}
+export const createTestScenario = tc => new TestScenario(getDbName(tc))
 
 /**
  * @param {Y.Doc} ydoc1

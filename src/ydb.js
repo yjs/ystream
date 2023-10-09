@@ -81,7 +81,7 @@ export const emitOpsEvent = (ydb, ops) => {
 }
 
 /**
- * @extends ObservableV2<{ sync:function():void, ops:function(Array<dbtypes.OpValue>,boolean):void }>
+ * @extends ObservableV2<{ sync:function():void, ops:function(Array<dbtypes.OpValue>,boolean):void, authenticate:function():void }>
  */
 export class Ydb extends ObservableV2 {
   /**
@@ -118,6 +118,11 @@ export class Ydb extends ObservableV2 {
     })
     this.clientid = random.uint32()
     /**
+     * Instance is authenticated once a user identity is set and the device claim has been set.
+     */
+    this.isAuthenticated = false
+    /**
+     * Clock of latest emitted clock.
      * @type {number|null}
      */
     this._eclock = null
@@ -128,19 +133,27 @@ export class Ydb extends ObservableV2 {
      */
     this._eops = []
     /**
+     * Timeout object for emitting ops.
+     *
      * @type {eventloop.TimeoutObject|null}
      */
     this._eev = null
     /**
+     * Ops to emit once ops from the database are fetched.
+     *
      * @type {Array<function(Array<dbtypes.OpValue>,boolean):void>}
      */
     this._els = []
+    /**
+     * Subscribe to broadcastchannel event that is fired whenever an op is added to the database.
+     */
     this._esub = bc.subscribe('ydb#' + this.dbname, /** @param {Array<number>} opids */ async (opids, origin) => {
       if (origin !== this) {
         const ops = await actions.getOps(this, opids[0])
         _emitOpsEvent(this, ops)
       }
     })
+    // comms should be added last, once all properties have been initialized.
     /**
      * @type {Set<import('./comm.js').Comm>}
      */
@@ -148,28 +161,6 @@ export class Ydb extends ObservableV2 {
     comms.forEach(comm => {
       this.comms.add(comm.init(this))
     })
-  }
-
-  /**
-   * @param {number} clock
-   * @param {function(Array<dbtypes.OpValue>, boolean):void} listener - listener(ops, isCurrent)
-   */
-  async consumeOps (clock, listener) {
-    if (clock === this._eclock) {
-      this._els.push(listener)
-      return
-    }
-    let nextClock = clock
-    // get all ops, check whether eclock matches or if eclock is null
-    while (this._eclock !== null && this._eclock <= nextClock) {
-      const ops = await actions.getOps(this, clock)
-      nextClock = ops.length > 0 ? ops[ops.length - 1].clock : clock
-      if (this._eclock == null) {
-        this._eclock = nextClock
-      }
-      listener(ops, this._eclock == null || this._eclock <= nextClock)
-    }
-    return this.on('ops', listener)
   }
 
   /**

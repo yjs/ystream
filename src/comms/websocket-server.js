@@ -24,7 +24,6 @@ import * as comm from '../comm.js' // eslint-disable-line
 import * as ydb from '../index.js'
 import * as promise from 'lib0/promise'
 import * as error from 'lib0/error'
-import * as ran from 'lib0/random'
 
 const expectedBufferedAmount = 512 * 1024 // 512kb
 
@@ -103,7 +102,7 @@ export const createWSServer = async ({ port = 9000, dbname = '.ydb-websocket-ser
   return server
 }
 
-class WSServer {
+export class WSServer {
   /**
    * @param {ydb.Ydb} ydb
    * @param {number} port

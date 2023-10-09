@@ -11,6 +11,11 @@ export const deleteYdb = isodb.deleteDB
  * @param {import('./ydb.js').YdbConf} [conf]
  */
 export const openYdb = async (dbname, collections, conf) => {
-  const idb = await db.createDb(dbname)
-  return new Ydb(collections, dbname, idb, conf)
+  const { idb, isAuthenticated } = await db.createDb(dbname)
+  const ydb = new Ydb(collections, dbname, idb, conf)
+  if (isAuthenticated) {
+    ydb.isAuthenticated = true
+    ydb.emit('authenticate', [])
+  }
+  return ydb
 }

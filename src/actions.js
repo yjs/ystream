@@ -20,6 +20,32 @@ import { emitOpsEvent } from './ydb.js'
  */
 
 /**
+ * Receive an event whenever an operation is added to ydb. This function ensures that listener is
+ * called for every op after `clock`
+ *
+ * @param {Ydb} ydb
+ * @param {number} clock
+ * @param {function(Array<dbtypes.OpValue>, boolean):void} listener - listener(ops, isCurrent)
+ */
+export const consumeOps = async (ydb, clock, listener) => {
+  if (clock === ydb._eclock) {
+    ydb._els.push(listener)
+    return
+  }
+  let nextClock = clock
+  // get all ops, check whether eclock matches or if eclock is null
+  while (ydb._eclock !== null && ydb._eclock <= nextClock) {
+    const ops = await getOps(ydb, clock)
+    nextClock = ops.length > 0 ? ops[ops.length - 1].clock : clock
+    if (ydb._eclock == null) {
+      ydb._eclock = nextClock
+    }
+    listener(ops, ydb._eclock == null || ydb._eclock <= nextClock)
+  }
+  return ydb.on('ops', listener)
+}
+
+/**
  * @param {Ydb} ydb
  * @param {string} collection
  */
@@ -314,7 +340,7 @@ export const applyRemoteOps = (ydb, ops) => {
     await promise.all(filteredOps.map(async op => {
       const localClock = await tr.tables.oplog.add(op)
       op.localClock = localClock.v
-      clientClockEntries.set(encodeClocksKey(op.client, op.collection), new dbtypes.ClientClockValue(op.clock, localClock.v))
+      clientClockEntries.set(encodeClocksKey(op.client, op.collection), new dbtypes.ClientClockValue(op.clock, op.localClock))
     }))
     clientClockEntries.forEach((clockValue, encClocksKey) => {
       const clocksKey = dbtypes.ClocksKey.decode(decoding.createDecoder(buffer.fromBase64(encClocksKey)))

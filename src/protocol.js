@@ -120,7 +120,7 @@ const _subscribeConnToOps = (ydb, comm, collection, nextExpectedClock) => {
       ))
     }
   }
-  ydb.consumeOps(nextExpectedClock, opsConsumer)
+  actions.consumeOps(ydb, nextExpectedClock, opsConsumer)
 }
 
 /**

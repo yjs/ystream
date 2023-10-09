@@ -1,12 +1,7 @@
 import * as dbtypes from './dbtypes.js'
 import * as isodb from 'isodb'
-import * as jose from 'lib0/crypto/jwt'
-import * as string from 'lib0/string'
-import * as sha256 from 'lib0/hash/sha256'
 import * as webcrypto from 'lib0/webcrypto'
 import * as oaep from 'lib0/crypto/rsa-oaep'
-import * as buffer from 'lib0/buffer'
-import * as time from 'lib0/time'
 import * as json from 'lib0/json'
 
 /**
@@ -55,13 +50,13 @@ export const def = {
     },
     users: {
       key: isodb.AutoKey,
-      value: dbtypes.User,
+      value: dbtypes.UserIdentity,
       indexes: {
         hash: {
           key: Uint8Array, // sha256 digest of public key
           /**
            * @param {isodb.AutoKey} _k
-           * @param {dbtypes.User} user
+           * @param {dbtypes.UserIdentity} user
            */
           mapper: (_k, user) => user.hash
         }
@@ -69,7 +64,7 @@ export const def = {
     },
     devices: {
       key: isodb.AutoKey,
-      value: dbtypes.DeviceClaim,
+      value: dbtypes.DeviceClaim, // @todo use DeviceIdentity instead
       indexes: {
         hash: {
           key: isodb.BinaryKey,
@@ -88,13 +83,13 @@ export const def = {
     },
     user: {
       public: isodb.CryptoKeyValue,
-      private: isodb.CryptoKeyValue
+      private: isodb.CryptoKeyValue,
+      identity: dbtypes.UserIdentity
     },
     device: {
       public: isodb.CryptoKeyValue,
       private: isodb.CryptoKeyValue,
-      // proof.iss: the base64 encoded value of the users publicKey.
-      // proof.sub: the json encoded key of the jwt of the device.
+      identity: dbtypes.DeviceIdentity,
       claim: dbtypes.DeviceClaim
     }
   }
@@ -180,36 +175,22 @@ export const def = {
  * @param {string} dbname
  */
 export const createDb = dbname =>
-  isodb.openDB(dbname, def).then(async idb => {
-    await idb.transact(async tr => {
+  isodb.openDB(dbname, def).then(idb =>
+    idb.transact(async tr => {
       const version = await tr.objects.db.get('version')
+      let isAuthenticated = false
       if (version === undefined) {
         // init
         tr.objects.db.set('version', 0)
         const dguid = new Uint8Array(64)
         webcrypto.getRandomValues(dguid)
-        const { publicKey: publicUserKey, privateKey: privateUserKey } = await oaep.generateKeyPair()
-        const user = new dbtypes.User(buffer.encodeAny(await oaep.exportKeyJwk(publicUserKey)))
-        tr.objects.user.set('public', publicUserKey)
-        tr.objects.user.set('private', privateUserKey)
-        tr.tables.users.add(user)
         const { publicKey: publicDeviceKey, privateKey: privateDeviceKey } = await oaep.generateKeyPair()
         tr.objects.device.set('private', privateDeviceKey)
         tr.objects.device.set('public', publicDeviceKey)
-        const jwtSub = json.stringify(await oaep.exportKeyJwk(publicDeviceKey)) // should be encoded so we have a hash
-        // @todo add type definition to isodb.jwtValue
-        // @todo add expiration date `exp`
-        const jwt = await jose.encodeJwt(privateUserKey, {
-          iss: buffer.toBase64(user.hash),
-          iat: time.getUnixTime(),
-          sub: jwtSub
-        })
-        // Don't call the constructor manually. This is okay only here. Use DeviceClaim.fromJwt
-        // instead.
-        const deviceclaim = new dbtypes.DeviceClaim(jwt, sha256.digest(string.encodeUtf8(jwtSub)))
-        tr.objects.device.set('claim', deviceclaim)
-        tr.tables.devices.add(deviceclaim)
+        tr.objects.device.set('identity', new dbtypes.DeviceIdentity(json.stringify(await oaep.exportKeyJwk(publicDeviceKey))))
+      } else if (await tr.objects.device.get('claim')) {
+        isAuthenticated = true
       }
+      return { isAuthenticated, idb }
     })
-    return idb
-  })
+  )

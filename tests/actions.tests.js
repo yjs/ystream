@@ -3,13 +3,14 @@ import * as utils from '../src/utils.js'
 import * as actions from '../src/actions.js'
 import * as operations from '../src/operations.js'
 import * as dbtypes from '../src/dbtypes.js'
-import { emptyUpdate, getTestClients } from './helpers.js'
+import { emptyUpdate, createTestScenario } from './helpers.js'
 
 /**
  * @param {t.TestCase} tc
  */
 export const testBasic = async tc => {
-  const { ydb1 } = await getTestClients(tc)
+  const scenario = createTestScenario(tc)
+  const { ydb: ydb1 } = await scenario.createClient()
   actions.addOp(ydb1, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
   actions.addOp(ydb1, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
   actions.addOp(ydb1, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
