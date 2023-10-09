@@ -11,9 +11,9 @@ if (isBrowser) {
 }
 
 runTests(/** @type {any} */ ({
+  authentication,
   ydb,
-  actions,
-  authentication
+  actions
 })).then(success => {
   /* istanbul ignore next 3 */
   if (isNode) {

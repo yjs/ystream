@@ -1,8 +1,9 @@
 import * as dbtypes from './dbtypes.js'
 import * as isodb from 'isodb'
 import * as webcrypto from 'lib0/webcrypto'
-import * as oaep from 'lib0/crypto/rsa-oaep'
 import * as json from 'lib0/json'
+import * as promise from 'lib0/promise'
+import * as ecdsa from 'lib0/crypto/ecdsa'
 
 /**
  * @todos
@@ -53,7 +54,7 @@ export const def = {
       value: dbtypes.UserIdentity,
       indexes: {
         hash: {
-          key: Uint8Array, // sha256 digest of public key
+          key: isodb.BinaryKey, // sha256 digest of public key
           /**
            * @param {isodb.AutoKey} _k
            * @param {dbtypes.UserIdentity} user
@@ -179,15 +180,17 @@ export const createDb = dbname =>
     idb.transact(async tr => {
       const version = await tr.objects.db.get('version')
       let isAuthenticated = false
-      if (version === undefined) {
+      if (version == null) {
         // init
         tr.objects.db.set('version', 0)
         const dguid = new Uint8Array(64)
         webcrypto.getRandomValues(dguid)
-        const { publicKey: publicDeviceKey, privateKey: privateDeviceKey } = await oaep.generateKeyPair()
-        tr.objects.device.set('private', privateDeviceKey)
-        tr.objects.device.set('public', publicDeviceKey)
-        tr.objects.device.set('identity', new dbtypes.DeviceIdentity(json.stringify(await oaep.exportKeyJwk(publicDeviceKey))))
+        const { publicKey: publicDeviceKey, privateKey: privateDeviceKey } = await ecdsa.generateKeyPair()
+        await promise.all([
+          tr.objects.device.set('private', privateDeviceKey),
+          tr.objects.device.set('public', publicDeviceKey),
+          tr.objects.device.set('identity', new dbtypes.DeviceIdentity(json.stringify(await ecdsa.exportKeyJwk(publicDeviceKey))))
+        ])
       } else if (await tr.objects.device.get('claim')) {
         isAuthenticated = true
       }

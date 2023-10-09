@@ -1,4 +1,4 @@
-import * as oaep from 'lib0/crypto/rsa-oaep'
+import * as ecdsa from 'lib0/crypto/ecdsa'
 import * as dbtypes from '../dbtypes.js'
 import * as buffer from 'lib0/buffer'
 import * as jose from 'lib0/crypto/jwt'
@@ -8,7 +8,6 @@ import * as error from 'lib0/error'
 import * as promise from 'lib0/promise'
 import * as string from 'lib0/string'
 import * as sha256 from 'lib0/hash/sha256'
-import * as isodb from 'isodb' // eslint-disable-line
 
 /**
  * @typedef {import('../ydb.js').Ydb} Ydb
@@ -16,16 +15,16 @@ import * as isodb from 'isodb' // eslint-disable-line
 
 /**
  * @param {Ydb} ydb
+ * @param {dbtypes.UserIdentity} userIdentity
  * @param {CryptoKey} publicKey
  * @param {CryptoKey|null} privateKey
  */
-export const setUserIdentity = async (ydb, publicKey, privateKey) =>
+export const setUserIdentity = async (ydb, userIdentity, publicKey, privateKey) =>
   ydb.db.transact(async tr => {
-    const user = new dbtypes.UserIdentity(json.stringify(await oaep.exportKeyJwk(publicKey)))
     tr.objects.user.set('public', publicKey)
     privateKey && tr.objects.user.set('private', privateKey)
-    tr.tables.users.add(user)
-    tr.objects.user.set('identity', user)
+    tr.tables.users.add(userIdentity)
+    tr.objects.user.set('identity', userIdentity)
     if (privateKey) {
       // generate deviceclaim
       /**
@@ -41,8 +40,9 @@ export const setUserIdentity = async (ydb, publicKey, privateKey) =>
  * @param {Ydb} ydb
  */
 export const generateUserIdentity = async (ydb) => {
-  const { publicKey, privateKey } = await oaep.generateKeyPair()
-  await setUserIdentity(ydb, publicKey, privateKey)
+  const { publicKey, privateKey } = await ecdsa.generateKeyPair()
+  const userIdentity = new dbtypes.UserIdentity(json.stringify(await ecdsa.exportKeyJwk(publicKey)))
+  await setUserIdentity(ydb, userIdentity, publicKey, privateKey)
 }
 
 /**
@@ -59,7 +59,7 @@ export const createDeviceClaim = (ydb, deviceIdentity) =>
     // @todo add type definition to isodb.jwtValue
     // @todo add expiration date `exp`
     const jwt = await jose.encodeJwt(privateUserKey.key, {
-      iss: buffer.toBase64(user.hash),
+      iss: buffer.toBase64(user.hash), // @todo should this be a hash, or the full ekey? (use hash only for indexing)
       iat: time.getUnixTime(),
       sub: deviceIdentity.ekey
     })
@@ -125,7 +125,7 @@ export const useDeviceClaim = (ydb, jwt) =>
     const { payload: { sub } } = payload
     if (userPublicKey == null) {
       // ensure that the user identity is set using the public key of the jwt
-      await setUserIdentity(ydb, await oaep.importKeyJwk(json.parse(sub)), null)
+      await setUserIdentity(ydb, new dbtypes.UserIdentity(sub), await ecdsa.importKeyJwk(json.parse(sub), { extractable: true }), null)
     }
     if (sub == null) error.unexpectedCase()
     // Don't call the constructor manually. This is okay only here. Use DeviceClaim.fromJwt
@@ -150,7 +150,7 @@ export const getDeviceIdentity = ydb =>
 /**
  * @param {Ydb} ydb
  */
-export const getUserIdentity= ydb =>
+export const getUserIdentity = ydb =>
   ydb.db.transact(async tr => {
     const uid = await tr.objects.user.get('identity')
     if (uid == null) error.unexpectedCase()

@@ -13,7 +13,7 @@ import * as string from 'lib0/string'
 import * as sha256 from 'lib0/hash/sha256'
 import * as jose from 'lib0/crypto/jwt'
 import * as json from 'lib0/json'
-import * as oaep from 'lib0/crypto/rsa-oaep'
+import * as ecdsa from 'lib0/crypto/ecdsa'
 
 /**
  * @template {operations.OpTypes} [OP=any]
@@ -178,7 +178,7 @@ export class UserIdentity {
   }
 
   get publicKey () {
-    return this._publicKey || (this._publicKey = oaep.importKeyJwk(json.parse(this.ekey)))
+    return this._publicKey || (this._publicKey = ecdsa.importKeyJwk(json.parse(this.ekey)))
   }
 
   /**
@@ -221,7 +221,7 @@ export class DeviceIdentity {
   }
 
   get publicKey () {
-    return this._publicKey || (this._publicKey = oaep.importKeyJwk(json.parse(this.ekey)))
+    return this._publicKey || (this._publicKey = ecdsa.importKeyJwk(json.parse(this.ekey)))
   }
 
   /**
@@ -282,7 +282,7 @@ export class DeviceClaim extends isodb.JwtValue {
    * Public key of the device
    */
   get dpkey () {
-    return this._dpkey || (this._dpkey = oaep.importKeyJwk(json.parse(this.unsafeDecode().payload.sub)))
+    return this._dpkey || (this._dpkey = ecdsa.importKeyJwk(json.parse(this.unsafeDecode().payload.sub)))
   }
 
   /**
