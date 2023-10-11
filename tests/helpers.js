@@ -11,6 +11,7 @@ import * as random from 'lib0/random'
  * New test runs shouldn't reuse old data
  */
 const randTestRunName = random.uint32().toString(32)
+console.log('random db name prefix: ' + randTestRunName)
 
 /**
  * @type {import('../src/comms/websocket-server.js').WSServer|null}

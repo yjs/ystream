@@ -59,7 +59,7 @@ export const createDeviceClaim = (ydb, deviceIdentity) =>
     // @todo add type definition to isodb.jwtValue
     // @todo add expiration date `exp`
     const jwt = await jose.encodeJwt(privateUserKey.key, {
-      iss: buffer.toBase64(user.hash), // @todo should this be a hash, or the full ekey? (use hash only for indexing)
+      iss: user.ekey,
       iat: time.getUnixTime(),
       sub: deviceIdentity.ekey
     })
@@ -122,10 +122,11 @@ export const useDeviceClaim = (ydb, jwt) =>
     } else {
       payload = jose.unsafeDecode(jwt)
     }
-    const { payload: { sub } } = payload
+    const { payload: { sub, iss } } = payload
     if (userPublicKey == null) {
       // ensure that the user identity is set using the public key of the jwt
-      await setUserIdentity(ydb, new dbtypes.UserIdentity(sub), await ecdsa.importKeyJwk(json.parse(sub), { extractable: true }), null)
+      const user = new dbtypes.UserIdentity(iss)
+      await setUserIdentity(ydb, user, await user.publicKey, null)
     }
     if (sub == null) error.unexpectedCase()
     // Don't call the constructor manually. This is okay only here. Use DeviceClaim.fromJwt
