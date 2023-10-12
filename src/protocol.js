@@ -8,6 +8,7 @@ import * as actions from './actions.js'
 import * as map from 'lib0/map'
 import * as promise from 'lib0/promise'
 import * as logging from 'lib0/logging'
+import * as authorization from './api/authorization.js'
 
 const _log = logging.createModuleLogger('ydb/protocol')
 /**

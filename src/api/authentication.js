@@ -1,6 +1,5 @@
 import * as ecdsa from 'lib0/crypto/ecdsa'
 import * as dbtypes from '../dbtypes.js'
-import * as buffer from 'lib0/buffer'
 import * as jose from 'lib0/crypto/jwt'
 import * as time from 'lib0/time'
 import * as json from 'lib0/json'

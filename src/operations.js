@@ -66,6 +66,10 @@ export class AbstractOp {
 }
 
 /**
+ * @typedef {'noaccess'|'r'|'rw'|'admin'} AccessType
+ */
+
+/**
  * An operation that contains information about which users have access to a document.
  *
  * @implements AbstractOp
@@ -73,37 +77,38 @@ export class AbstractOp {
 export class OpPerm {
   constructor () {
     /**
-     * @type {Map<number,number>}
+     * @type {Map<string,number>}
      */
     this.access = new Map()
   }
 
   /**
-   * @param {number} clientid
+   * @param {string} userhash
    */
-  hasReadAccess (clientid) {
-    return (this.access.get(clientid) || 0) % 3 > 0
+  hasReadAccess (userhash) {
+    return (this.access.get(userhash) || 0) % 3 > 0
   }
 
   /**
-   * @param {number} clientid
+   * @param {string} userhash
    */
-  hasWriteAccess (clientid) {
-    return (this.access.get(clientid) || 0) % 4 > 1
+  hasWriteAccess (userhash) {
+    return (this.access.get(userhash) || 0) % 4 > 1
   }
 
   /**
-   * @param {number} clientid
+   * @param {string} userhash
    */
-  hasAdminAccess (clientid) {
-    return (this.access.get(clientid) || 0) % 4 === 3
+  hasAdminAccess (userhash) {
+    return (this.access.get(userhash) || 0) % 4 === 3
   }
 
   /**
-   * @param {number} clientid
+   * @param {string} userhash
+   * @return {AccessType}
    */
-  getAccessType (clientid) {
-    switch ((this.access.get(clientid) || 0) % 4) {
+  getAccessType (userhash) {
+    switch ((this.access.get(userhash) || 0) % 4) {
       case 0:
         return 'noaccess'
       case 1:
@@ -129,8 +134,8 @@ export class OpPerm {
    */
   encode (encoder) {
     encoding.writeVarUint(encoder, this.access.size)
-    this.access.forEach((perm, clientid) => {
-      encoding.writeVarUint(encoder, clientid)
+    this.access.forEach((perm, userhash) => {
+      encoding.writeVarString(encoder, userhash)
       encoding.writeVarUint(encoder, perm)
     })
   }
@@ -143,9 +148,9 @@ export class OpPerm {
     const op = new OpPerm()
     const size = decoding.readVarUint(decoder)
     for (let i = 0; i < size; i++) {
-      const clientid = decoding.readVarUint(decoder)
+      const userhash = decoding.readVarString(decoder)
       const perm = decoding.readVarUint(decoder)
-      op.access.set(clientid, perm)
+      op.access.set(userhash, perm)
     }
     return op
   }
@@ -159,14 +164,44 @@ export class OpPerm {
     const mergedOp = ops[0].op
     for (let i = 1; i < ops.length; i++) {
       const op = ops[i]
-      op.op.access.forEach((perm, clientid) => {
-        mergedOp.access.set(clientid, math.max(mergedOp.access.get(clientid) || 0, perm))
+      op.op.access.forEach((perm, userhash) => {
+        mergedOp.access.set(userhash, math.max(mergedOp.access.get(userhash) || 0, perm))
       })
     }
     const lastOp = ops[ops.length - 1]
     lastOp.op = mergedOp
     return lastOp
   }
+}
+
+/**
+ * @param {OpPerm|null} currentPermOp
+ * @param {string} userhash
+ * @param {AccessType} accessType
+ */
+export const createOpPermUpdate = (currentPermOp, userhash, accessType) => {
+  const currAccess = (currentPermOp?.access.get(userhash) || 0) % 4
+  const diff = 4 - currAccess
+  let newAccessType = 0
+  switch (accessType) {
+    case 'noaccess':
+      newAccessType = 0
+      break
+    case 'r':
+      newAccessType = 1
+      break
+    case 'rw':
+      newAccessType = 2
+      break
+    case 'admin':
+      newAccessType = 3
+      break
+    default:
+      error.unexpectedCase()
+  }
+  const newPermOp = new OpPerm()
+  newPermOp.access.set(userhash, currAccess + diff + newAccessType)
+  return newPermOp
 }
 
 /**

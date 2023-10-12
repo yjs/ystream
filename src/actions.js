@@ -14,6 +14,7 @@ import * as utils from './utils.js'
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import { emitOpsEvent } from './ydb.js'
+import * as authorization from './api/authorization.js'
 
 /**
  * @typedef {import('./ydb.js').Ydb} Ydb
@@ -313,8 +314,9 @@ export const getClocks = ydb =>
 /**
  * @param {Ydb} ydb
  * @param {Array<dbtypes.OpValue>} ops
+ * @param {dbtypes.UserIdentity} user
  */
-export const applyRemoteOps = (ydb, ops) => {
+export const applyRemoteOps = (ydb, ops, user) => {
   const p = ydb.db.transact(async tr => {
     /**
      * Maps from encoded(collection/doc/clientid) to clock
@@ -336,11 +338,23 @@ export const applyRemoteOps = (ydb, ops) => {
      */
     const clientClockEntries = new Map()
     const filteredOps = ops.filter(op => op.clock > (clocks.get(encodeClocksKey(op.client, op.collection)) || -1))
+    /**
+     * @type {Map<string,Map<string,boolean>>}
+     */
+    const permissions = new Map()
+    filteredOps.forEach(op => { map.setIfUndefined(permissions, op.collection, () => new Map()).set(op.doc, false) })
+    await promise.all(array.from(permissions.entries()).map(([collectionName, docs]) =>
+      promise.all(array.from(docs.keys()).map(
+        docName => authorization.hasWriteAccess(ydb, collectionName, docName, user).then(hasWriteAccess => docs.set(docName, hasWriteAccess))
+      ))
+    ))
     // 1. Filter ops that have already been applied 2. apply ops 3. update clocks table
     await promise.all(filteredOps.map(async op => {
-      const localClock = await tr.tables.oplog.add(op)
-      op.localClock = localClock.v
-      clientClockEntries.set(encodeClocksKey(op.client, op.collection), new dbtypes.ClientClockValue(op.clock, op.localClock))
+      if (permissions.get(op.collection)?.get(op.doc)) {
+        const localClock = await tr.tables.oplog.add(op)
+        op.localClock = localClock.v
+        clientClockEntries.set(encodeClocksKey(op.client, op.collection), new dbtypes.ClientClockValue(op.clock, op.localClock))
+      }
     }))
     clientClockEntries.forEach((clockValue, encClocksKey) => {
       const clocksKey = dbtypes.ClocksKey.decode(decoding.createDecoder(buffer.fromBase64(encClocksKey)))
