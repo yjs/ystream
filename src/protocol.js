@@ -9,6 +9,8 @@ import * as map from 'lib0/map'
 import * as promise from 'lib0/promise'
 import * as logging from 'lib0/logging'
 import * as authorization from './api/authorization.js'
+import * as authentication from './api/authentication.js'
+import * as buffer from 'lib0/buffer'
 
 const _log = logging.createModuleLogger('ydb/protocol')
 /**
@@ -51,7 +53,10 @@ const readOps = (decoder, ydb, comm) => {
     ops.push(/** @type {dbtypes.OpValue} */ (dbtypes.OpValue.decode(decoder)))
   }
   log(ydb, comm, 'Ops', `received ${ops.length} ops`)
-  return actions.applyRemoteOps(ydb, ops)
+  if (comm.user == null) {
+    error.unexpectedCase()
+  }
+  return actions.applyRemoteOps(ydb, ops, comm.user)
 }
 
 /**
@@ -151,6 +156,11 @@ const readRequestOps = async (encoder, decoder, ydb, comm) => {
 export const writeInfo = (encoder, ydb) => {
   encoding.writeUint8(encoder, messageInfo)
   encoding.writeVarUint(encoder, ydb.clientid)
+  if (ydb.user == null || ydb.deviceClaim == null) {
+    error.unexpectedCase()
+  }
+  ydb.user.encode(encoder)
+  ydb.deviceClaim.encode(encoder)
 }
 
 /**
@@ -162,8 +172,39 @@ export const writeInfo = (encoder, ydb) => {
  */
 const readInfo = async (encoder, decoder, ydb, comm) => {
   const clientid = decoding.readVarUint(decoder)
+  // @todo user only has to be submitted, if we want to register a new user. For now, we simply
+  // always send the user identity in all initial requests.
+  const user = dbtypes.UserIdentity.decode(decoder)
+  const deviceClaim = dbtypes.DeviceClaim.decode(decoder)
   comm.clientid = clientid
-  log(ydb, comm, 'Info', ydb.syncsEverything)
+  comm.user = user
+  // @todo 1. read device claim and verify it
+  comm.deviceClaim = deviceClaim
+  if (!array.equalFlat(user.hash, deviceClaim.hash)) {
+    log(ydb, comm, 'InfoRejected', 'rejecting comm because client hash doesn\'t match with device claim')
+    error.unexpectedCase()
+  }
+  if (ydb.acceptNewUsers) {
+    await authentication.registerUser(ydb, user)
+  } else {
+    if ((await authentication.isRegisteredUser(ydb, user)) === false) {
+      comm.destroy()
+      return
+    }
+  }
+  const parsedClaim = await deviceClaim.verify(await user.publicKey)
+  if (parsedClaim.payload.iss !== buffer.toBase64(user.hash)) {
+    comm.destroy()
+    error.unexpectedCase()
+  }
+  await ydb.db.transact(async tr => {
+    const currClaim = await tr.tables.devices.indexes.hash.get(deviceClaim.hash)
+    if (currClaim == null) {
+      await tr.tables.devices.add(deviceClaim)
+    }
+  })
+  // @todo send some kind of challenge
+  log(ydb, comm, 'Info')
   // we respond by asking for the registered collejtions
   if (ydb.syncsEverything) {
     const clock = await actions.getClock(ydb, clientid, null)
@@ -189,27 +230,31 @@ const readInfo = async (encoder, decoder, ydb, comm) => {
 export const readMessage = async (encoder, decoder, ydb, comm) => {
   do {
     const messageType = decoding.readUint8(decoder)
-    switch (messageType) {
-      case messageOps: {
-        await readOps(decoder, ydb, comm)
-        break
+    if (messageType === messageInfo) {
+      await readInfo(encoder, decoder, ydb, comm)
+    } else {
+      if (comm.deviceClaim == null || comm.user == null) {
+        log(ydb, comm, 'closing unauthenticated connection')
+        comm.destroy()
       }
-      case messageRequestOps: {
-        await readRequestOps(encoder, decoder, ydb, comm)
-        break
+      switch (messageType) {
+        case messageOps: {
+          await readOps(decoder, ydb, comm)
+          break
+        }
+        case messageRequestOps: {
+          await readRequestOps(encoder, decoder, ydb, comm)
+          break
+        }
+        case messageSynced: {
+          await readSynced(encoder, decoder, ydb, comm)
+          break
+        }
+        /* c8 ignore next 3 */
+        default:
+          // Unknown message-type
+          error.unexpectedCase()
       }
-      case messageSynced: {
-        await readSynced(encoder, decoder, ydb, comm)
-        break
-      }
-      case messageInfo: {
-        await readInfo(encoder, decoder, ydb, comm)
-        break
-      }
-      /* c8 ignore next 3 */
-      default:
-        // Unknown message-type
-        error.unexpectedCase()
     }
   } while (decoding.hasContent(decoder))
   if (encoding.hasContent(encoder)) {

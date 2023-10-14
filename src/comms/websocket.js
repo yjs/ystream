@@ -68,7 +68,9 @@ const setupWS = comm => {
       comm.wsconnecting = false
       comm.wsconnected = true
       comm.wsUnsuccessfulReconnects = 0
-      websocket.send(encoding.encode(encoder => protocol.writeInfo(encoder, comm.ydb)))
+      comm.ydb.whenAuthenticated.then(() => {
+        websocket.send(encoding.encode(encoder => protocol.writeInfo(encoder, comm.ydb)))
+      })
       comm.emit('status', [{
         status: 'connected'
       }, comm])
@@ -120,6 +122,14 @@ class WebSocketCommInstance extends ObservableV2 {
     this.ydb = ydb
     this.url = url
     this.clientid = -1
+    /**
+     * @type {import('../dbtypes.js').UserIdentity|null}
+     */
+    this.user = null
+    /**
+     * @type {import('../dbtypes.js').DeviceClaim|null}
+     */
+    this.deviceClaim = null
     /**
      * @type {WebSocket|null}
      */

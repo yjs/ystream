@@ -198,7 +198,7 @@ export class UserIdentity {
 
   /**
    * @param {decoding.Decoder} decoder
-   * @return {isodb.IEncodable}
+   * @return {UserIdentity}
    */
   static decode (decoder) {
     decoding.readVarUint(decoder) // read a "type" byte that is reserved for future usage
@@ -253,7 +253,8 @@ export class DeviceIdentity {
 /**
  * @typedef {Object} JwtDeviceClaim
  * @property {number} JwtDeviceClaim.iat
- * @property {string} JwtDeviceClaim.sub
+ * @property {string} JwtDeviceClaim.sub public key of the device
+ * @property {string} JwtDeviceClaim.iss "issuer" hash of the user that created this claim
  */
 
 /**
@@ -297,7 +298,7 @@ export class DeviceClaim extends isodb.JwtValue {
 
   /**
    * @param {decoding.Decoder} decoder
-   * @return {isodb.IEncodable}
+   * @return {DeviceClaim}
    */
   static decode (decoder) {
     const jwt = decoding.readVarString(decoder)

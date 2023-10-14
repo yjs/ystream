@@ -22,6 +22,16 @@ export class Comm {
   get clientid () { return -1 }
   set clientid (_v) { error.methodUnimplemented() }
   /**
+   * @type {import('./dbtypes.js').UserIdentity|null}
+   */
+  get user () { return error.methodUnimplemented() }
+  set user (_u) { error.methodUnimplemented() }
+  /**
+   * @type {import('./dbtypes.js').DeviceClaim|null}
+   */
+  get deviceClaim () { return error.methodUnimplemented() }
+  set deviceClaim (_u) { error.methodUnimplemented() }
+  /**
    * Set of synced collections
    * @type {Set<string>}
    */

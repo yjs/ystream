@@ -7,7 +7,6 @@ import * as db from './db.js' // eslint-disable-line
 import { ObservableV2 } from 'lib0/observable'
 import * as random from 'lib0/random'
 import * as actions from './actions.js'
-import * as operations from './operations.js'
 import * as array from 'lib0/array'
 import * as dbtypes from './dbtypes.js' // eslint-disable-line
 import * as eventloop from 'lib0/eventloop'
@@ -16,6 +15,7 @@ import * as bc from 'lib0/broadcastchannel'
 /**
  * @typedef {Object} YdbConf
  * @property {Array<import('./comm.js').CommConfiguration>} [YdbConf.comms]
+ * @property {boolean} [YdbConf.acceptNewUsers]
  */
 
 /**
@@ -88,9 +88,11 @@ export class Ydb extends ObservableV2 {
    * @param {Array<string>} collections
    * @param {string} dbname
    * @param {isodb.IDB<typeof db.def>} _db
+   * @param {dbtypes.UserIdentity|null} user
+   * @param {dbtypes.DeviceClaim|null} deviceClaim
    * @param {YdbConf} conf
    */
-  constructor (collections, dbname, _db, { comms = [] } = {}) {
+  constructor (collections, dbname, _db, user, deviceClaim, { comms = [], acceptNewUsers = false } = {}) {
     super()
     this.dbname = dbname
     /**
@@ -103,6 +105,7 @@ export class Ydb extends ObservableV2 {
      * @type {boolean}
      */
     this.syncsEverything = array.some(collections, c => c === '*')
+    this.acceptNewUsers = acceptNewUsers
     /**
      * @type {Map<string,Map<string,Set<Y.Doc>>>}
      */
@@ -113,14 +116,23 @@ export class Ydb extends ObservableV2 {
      */
     this.syncedCollections = new Set()
     this.isSynced = false
-    this.whenSynced = promise.create(resolve => {
+    this.whenSynced = promise.create(resolve =>
       this.once('sync', resolve)
-    })
+    )
     this.clientid = random.uint32()
+    /**
+     * @type {dbtypes.UserIdentity|null}
+     */
+    this.user = user
+    /**
+     * @type {dbtypes.DeviceClaim|null}
+     */
+    this.deviceClaim = deviceClaim
     /**
      * Instance is authenticated once a user identity is set and the device claim has been set.
      */
     this.isAuthenticated = false
+    this.whenAuthenticated = promise.create(resolve => this.once('authenticate', resolve))
     /**
      * Clock of latest emitted clock.
      * @type {number|null}
@@ -153,14 +165,13 @@ export class Ydb extends ObservableV2 {
         _emitOpsEvent(this, ops)
       }
     })
-    // comms should be added last, once all properties have been initialized.
     /**
      * @type {Set<import('./comm.js').Comm>}
      */
     this.comms = new Set()
-    comms.forEach(comm => {
+    comms.forEach(comm =>
       this.comms.add(comm.init(this))
-    })
+    )
   }
 
   /**
@@ -177,15 +188,6 @@ export class Ydb extends ObservableV2 {
     docset.add(ydoc)
     bindydoc(this, collection, docname, ydoc)
     return ydoc
-  }
-
-  /**
-   * @param {string} collection
-   * @param {string} docname
-   */
-  async getPermission (collection, docname) {
-    const perm = await actions.getDocOpsMerged(this, collection, docname, operations.OpPermType)
-    return perm != null ? perm.op.getAccessType(this.clientid) : false
   }
 
   destroy () {

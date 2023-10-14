@@ -24,6 +24,7 @@ export const setUserIdentity = async (ydb, userIdentity, publicKey, privateKey) 
     privateKey && tr.objects.user.set('private', privateKey)
     tr.tables.users.add(userIdentity)
     tr.objects.user.set('identity', userIdentity)
+    ydb.user = userIdentity
     if (privateKey) {
       // generate deviceclaim
       /**
@@ -42,6 +43,7 @@ export const generateUserIdentity = async (ydb) => {
   const { publicKey, privateKey } = await ecdsa.generateKeyPair()
   const userIdentity = new dbtypes.UserIdentity(json.stringify(await ecdsa.exportKeyJwk(publicKey)))
   await setUserIdentity(ydb, userIdentity, publicKey, privateKey)
+  return userIdentity
 }
 
 /**
@@ -77,6 +79,18 @@ export const registerUser = (ydb, user) =>
   })
 
 /**
+ * Checks whether a user is registered in this database.
+ *
+ * @param {Ydb} ydb
+ * @param {dbtypes.UserIdentity} user
+ */
+export const isRegisteredUser = (ydb, user) =>
+  ydb.db.transact(tr =>
+    tr.tables.users.indexes.hash.get(user.hash)
+      .then(ruser => ruser?.ekey === user.ekey)
+  )
+
+/**
  * @param {Ydb} ydb
  * @param {Uint8Array} userHash
  * @param {string} jwt
@@ -98,7 +112,7 @@ export const verifyDeviceClaim = (ydb, userHash, jwt) =>
  * @param {Uint8Array} userHash
  * @param {dbtypes.DeviceClaim} claim
  */
-export const registerDevice = (ydb, userHash, claim) => {
+export const registerDevice = (ydb, userHash, claim) =>
   ydb.db.transact(async tr => {
     const user = await tr.tables.users.indexes.hash.get(userHash)
     if (user == null) error.unexpectedCase()
@@ -106,7 +120,6 @@ export const registerDevice = (ydb, userHash, claim) => {
     verifyDeviceClaim(ydb, claim.hash, claim.v)
     tr.tables.devices.add(claim)
   })
-}
 
 /**
  * @param {Ydb} ydb
@@ -133,6 +146,7 @@ export const useDeviceClaim = (ydb, jwt) =>
     const deviceclaim = new dbtypes.DeviceClaim(jwt, sha256.digest(string.encodeUtf8(sub)))
     tr.objects.device.set('claim', deviceclaim)
     tr.tables.devices.add(deviceclaim)
+    ydb.deviceClaim = deviceclaim
     ydb.isAuthenticated = true
     ydb.emit('authenticate', []) // should only be fired on deviceclaim
   })

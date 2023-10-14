@@ -180,6 +180,14 @@ export const createDb = dbname =>
     idb.transact(async tr => {
       const version = await tr.objects.db.get('version')
       let isAuthenticated = false
+      /**
+       * @type {dbtypes.UserIdentity|null}
+       */
+      let user = null
+      /**
+       * @type {dbtypes.DeviceClaim|null}
+       */
+      let deviceClaim = null
       if (version == null) {
         // init
         tr.objects.db.set('version', 0)
@@ -193,7 +201,9 @@ export const createDb = dbname =>
         ])
       } else if (await tr.objects.device.get('claim')) {
         isAuthenticated = true
+        user = await tr.objects.user.get('identity')
+        deviceClaim = await tr.objects.device.get('claim')
       }
-      return { isAuthenticated, idb }
+      return { isAuthenticated, idb, user, deviceClaim }
     })
   )

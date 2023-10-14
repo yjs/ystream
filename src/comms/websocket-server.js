@@ -36,6 +36,14 @@ class WSClient {
    */
   constructor (ws) {
     this.clientid = -1
+    /**
+     * @type {import('../dbtypes.js').UserIdentity|null}
+     */
+    this.user = null
+    /**
+     * @type {import('../dbtypes.js').DeviceClaim|null}
+     */
+    this.deviceClaim = null
     this.ws = ws
     /**
      * @type {Array<function (encoding.Encoder): Promise<boolean>>}
@@ -94,9 +102,10 @@ class WSClient {
  * @param {Object} options
  * @param {number} [options.port]
  * @param {string} [options.dbname]
+ * @param {boolean} [options.acceptNewUsers]
  */
-export const createWSServer = async ({ port = 9000, dbname = '.ydb-websocket-server' } = {}) => {
-  const db = await ydb.openYdb(dbname, ['*'], {})
+export const createWSServer = async ({ port = 9000, dbname = '.ydb-websocket-server', acceptNewUsers = true } = {}) => {
+  const db = await ydb.openYdb(dbname, ['*'], { acceptNewUsers })
   const server = new WSServer(db, port)
   await server.ready
   return server
@@ -108,6 +117,7 @@ export class WSServer {
    * @param {number} port
    */
   constructor (ydb, port) {
+    this.ydb = ydb
     this.ready = promise.create((resolve, reject) => {
       uws.App({}).ws('/*', /** @type {uws.WebSocketBehavior<{ client: WSClient }>} */ ({
         /* Options */

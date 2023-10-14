@@ -6,6 +6,7 @@ import * as array from 'lib0/array'
 import * as wscomm from '../src/comms/websocket.js'
 import * as env from 'lib0/environment'
 import * as random from 'lib0/random'
+import * as authentication from '../src/api/authentication.js'
 
 /**
  * New test runs shouldn't reuse old data
@@ -72,6 +73,8 @@ class TestScenario {
     const ydb = await Ydb.openYdb(dbname, collections, {
       comms: [new wscomm.WebSocketComm('ws://localhost:9000')]
     })
+    await authentication.generateUserIdentity(ydb)
+    server
     this.clients.push(ydb)
     return new TestClient(ydb)
   }
