@@ -11,6 +11,8 @@ import * as logging from 'lib0/logging'
 import * as authorization from './api/authorization.js'
 import * as authentication from './api/authentication.js'
 import * as buffer from 'lib0/buffer'
+import * as webcrypto from 'lib0/webcrypto'
+import * as jose from 'lib0/crypto/jwt'
 
 const _log = logging.createModuleLogger('ydb/protocol')
 /**
@@ -24,7 +26,8 @@ const log = (ydb, comm, type, ...args) => _log(logging.PURPLE, `(local=${ydb.cli
 const messageOps = 0
 const messageRequestOps = 1
 const messageSynced = 2
-const messageInfo = 3
+const messageInfo = 3 // first message
+const messageChallengeAnswer = 4 // second message
 
 /**
  * @param {encoding.Encoder} encoder
@@ -152,8 +155,9 @@ const readRequestOps = async (encoder, decoder, ydb, comm) => {
  * @todo should contain device auth, exchange of certificates, some verification by challenge, ..
  * @param {encoding.Encoder} encoder
  * @param {Ydb} ydb
+ * @param {import('./comm.js').Comm} comm - this is used to subscribe to messages
  */
-export const writeInfo = (encoder, ydb) => {
+export const writeInfo = (encoder, ydb, comm) => {
   encoding.writeUint8(encoder, messageInfo)
   encoding.writeVarUint(encoder, ydb.clientid)
   if (ydb.user == null || ydb.deviceClaim == null) {
@@ -161,6 +165,8 @@ export const writeInfo = (encoder, ydb) => {
   }
   ydb.user.encode(encoder)
   ydb.deviceClaim.encode(encoder)
+  // challenge that the other user must sign using the device's private key
+  encoding.writeVarUint8Array(encoder, comm.challenge)
 }
 
 /**
@@ -205,14 +211,37 @@ const readInfo = async (encoder, decoder, ydb, comm) => {
   })
   // @todo send some kind of challenge
   log(ydb, comm, 'Info')
-  // we respond by asking for the registered collejtions
+}
+
+/**
+ * @param {encoding.Encoder} encoder
+ * @param {decoding.Decoder} decoder
+ * @param {import('./comm.js').Comm} comm
+ * @param {Ydb} ydb
+ */
+const readChallengeAnswer = async (encoder, decoder, ydb, comm) => {
+  const deviceClaim = comm.deviceClaim
+  if (deviceClaim == null) {
+    error.unexpectedCase()
+  }
+  const jwt = decoding.readVarString(decoder)
+  try {
+    const { payload: { sub } } = await jose.verifyJwt(await deviceClaim.dpkey, jwt)
+    if (sub !== comm.challenge) {
+      throw new Error('Wrong challenge')
+    }
+  } catch (err) {
+    comm.destroy()
+  }
+  comm.isAuthenticated = true
+  // @todo now send requestOps
   if (ydb.syncsEverything) {
-    const clock = await actions.getClock(ydb, clientid, null)
+    const clock = await actions.getClock(ydb, comm.clientid, null)
     writeRequestOps(encoder, '*', clock)
   } else {
     await ydb.db.transact(() =>
       promise.all(map.map(ydb.collections, (_, collectionname) =>
-        actions.getClock(ydb, clientid, collectionname).then(clock => {
+        actions.getClock(ydb, comm.clientid, collectionname).then(clock => {
           writeRequestOps(encoder, collectionname, clock)
           return clock
         })
@@ -222,43 +251,68 @@ const readInfo = async (encoder, decoder, ydb, comm) => {
 }
 
 /**
+ * @todo should contain device auth, exchange of certificates, some verification by challenge, ..
+ * @param {encoding.Encoder} encoder
+ * @param {Ydb} ydb
+ * @param {Uint8Array} challenge - this is used to subscribe to messages
+ */
+export const writeChallengeAnswer = async (encoder, ydb, challenge) => {
+  encoding.writeUint8(encoder, messageChallengeAnswer)
+  await ydb.db.transact(async tr => {
+    const pk = await tr.objects.device.get('private')
+    if (pk == null) error.unexpectedCase()
+    const jwt = await jose.encodeJwt(pk.key, {
+      sub: buffer.toBase64(challenge)
+    })
+    encoding.writeVarString(encoder, jwt)
+  })
+}
+
+/**
  * @param {encoding.Encoder} encoder
  * @param {decoding.Decoder} decoder
  * @param {Ydb} ydb
  * @param {import('./comm.js').Comm} comm - this is used to set the "synced" property
  */
 export const readMessage = async (encoder, decoder, ydb, comm) => {
-  do {
-    const messageType = decoding.readUint8(decoder)
-    if (messageType === messageInfo) {
-      await readInfo(encoder, decoder, ydb, comm)
-    } else {
-      if (comm.deviceClaim == null || comm.user == null) {
-        log(ydb, comm, 'closing unauthenticated connection')
-        comm.destroy()
+  try {
+    do {
+      const messageType = decoding.readUint8(decoder)
+      if (messageType === messageInfo) {
+        await readInfo(encoder, decoder, ydb, comm)
+      } else if (messageType === messageChallengeAnswer) {
+        await readChallengeAnswer(encoder, decoder, ydb, comm)
+      } else {
+        if (comm.deviceClaim == null || comm.user == null || !comm.isAuthenticated) {
+          log(ydb, comm, 'closing unauthenticated connection')
+          comm.destroy()
+        }
+        switch (messageType) {
+          case messageOps: {
+            await readOps(decoder, ydb, comm)
+            break
+          }
+          case messageRequestOps: {
+            await readRequestOps(encoder, decoder, ydb, comm)
+            break
+          }
+          case messageSynced: {
+            await readSynced(encoder, decoder, ydb, comm)
+            break
+          }
+          /* c8 ignore next 3 */
+          default:
+            // Unknown message-type
+            error.unexpectedCase()
+        }
       }
-      switch (messageType) {
-        case messageOps: {
-          await readOps(decoder, ydb, comm)
-          break
-        }
-        case messageRequestOps: {
-          await readRequestOps(encoder, decoder, ydb, comm)
-          break
-        }
-        case messageSynced: {
-          await readSynced(encoder, decoder, ydb, comm)
-          break
-        }
-        /* c8 ignore next 3 */
-        default:
-          // Unknown message-type
-          error.unexpectedCase()
-      }
+    } while (decoding.hasContent(decoder))
+    if (encoding.hasContent(encoder)) {
+      return encoder
     }
-  } while (decoding.hasContent(decoder))
-  if (encoding.hasContent(encoder)) {
-    return encoder
+    return null
+  } catch (err) {
+    log(ydb, comm, 'Closing connection because of unexpected error', err)
+    comm.destroy()
   }
-  return null
 }

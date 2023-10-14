@@ -37,8 +37,14 @@ export class Comm {
    */
   get synced () { return new Set() }
   set synced (_v) { error.methodUnimplemented() }
+  /**
+   * Set of synced collections
+   * @type {Uint8Array}
+   */
+  get challenge () { return new Uint8Array() }
   get isDestroyed () { return false }
-
+  get isAuthenticated () { return false }
+  set isAuthenticated (_v) { error.methodUnimplemented() }
   /**
    * @param {Uint8Array} _message
    */

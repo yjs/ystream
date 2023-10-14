@@ -8,6 +8,7 @@ import * as math from 'lib0/math'
 import * as comm from '../comm.js' // eslint-disable-line
 import * as logging from 'lib0/logging'
 import { Ydb } from '../ydb.js' // eslint-disable-line
+import * as webcrypto from 'lib0/webcrypto'
 
 const _log = logging.createModuleLogger('ydb/websocket')
 /**
@@ -69,7 +70,7 @@ const setupWS = comm => {
       comm.wsconnected = true
       comm.wsUnsuccessfulReconnects = 0
       comm.ydb.whenAuthenticated.then(() => {
-        websocket.send(encoding.encode(encoder => protocol.writeInfo(encoder, comm.ydb)))
+        websocket.send(encoding.encode(encoder => protocol.writeInfo(encoder, comm.ydb, comm)))
       })
       comm.emit('status', [{
         status: 'connected'
@@ -122,10 +123,15 @@ class WebSocketCommInstance extends ObservableV2 {
     this.ydb = ydb
     this.url = url
     this.clientid = -1
+    this.isAuthenticated = false
     /**
      * @type {import('../dbtypes.js').UserIdentity|null}
      */
     this.user = null
+    /**
+     * @type {Uint8Array}
+     */
+    this.challenge = webcrypto.getRandomValues(new Uint8Array(64))
     /**
      * @type {import('../dbtypes.js').DeviceClaim|null}
      */

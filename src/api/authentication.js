@@ -36,14 +36,10 @@ export const setUserIdentity = async (ydb, userIdentity, publicKey, privateKey) 
     }
   })
 
-/**
- * @param {Ydb} ydb
- */
-export const generateUserIdentity = async (ydb) => {
-  const { publicKey, privateKey } = await ecdsa.generateKeyPair()
+export const createUserIdentity = async ({ extractable = false } = {}) => {
+  const { publicKey, privateKey } = await ecdsa.generateKeyPair({ extractable })
   const userIdentity = new dbtypes.UserIdentity(json.stringify(await ecdsa.exportKeyJwk(publicKey)))
-  await setUserIdentity(ydb, userIdentity, publicKey, privateKey)
-  return userIdentity
+  return { userIdentity, publicKey, privateKey }
 }
 
 /**

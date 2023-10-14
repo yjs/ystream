@@ -7,12 +7,26 @@ import * as wscomm from '../src/comms/websocket.js'
 import * as env from 'lib0/environment'
 import * as random from 'lib0/random'
 import * as authentication from '../src/api/authentication.js'
+import * as json from 'lib0/json'
+import * as buffer from 'lib0/buffer'
+import * as dbtypes from '../src/dbtypes.js'
+import * as decoding from 'lib0/decoding'
 
 /**
  * New test runs shouldn't reuse old data
  */
 const randTestRunName = random.uint32().toString(32)
 console.log('random db name prefix: ' + randTestRunName)
+
+const testUserRaw = {
+  privateKey: '{"key_ops":["verify"],"ext":true,"kty":"EC","x":"kHpBJE578FmXCTDeVVB8VF_fD-jZgxWA-knaxTZNsxT7gNakyjU6LT31W7kL0B4t","y":"OePffJdElJh5vrC4ynmBVm4yDinBdIVc_diZIgqKFVEFATEZHRYH-I9DDWRFt0Bp","crv":"P-384"}',
+  user: 'AMgBeyJrZXlfb3BzIjpbInZlcmlmeSJdLCJleHQiOnRydWUsImt0eSI6IkVDIiwieCI6ImtIcEJKRTU3OEZtWENURGVWVkI4VkZfZkQtalpneFdBLWtuYXhUWk5zeFQ3Z05ha3lqVTZMVDMxVzdrTDBCNHQiLCJ5IjoiT2VQZmZKZEVsSmg1dnJDNHlubUJWbTR5RGluQmRJVmNfZGlaSWdxS0ZWRUZBVEVaSFJZSC1JOUREV1JGdDBCcCIsImNydiI6IlAtMzg0In0='
+}
+
+const testUser = {
+  privateKey: json.parse(testUserRaw.privateKey),
+  user: dbtypes.UserIdentity.decode(decoding.createDecoder(buffer.fromBase64(testUserRaw.user)))
+}
 
 /**
  * @type {import('../src/comms/websocket-server.js').WSServer|null}
@@ -26,6 +40,7 @@ if (env.isNode) {
   } catch (e) {}
   const { createWSServer } = await import('../src/comms/websocket-server.js')
   server = await createWSServer({ dbname: `.test_dbs/${randTestRunName}-server` })
+  await authentication.registerUser(server.ydb, testUser.user)
 }
 
 /**
@@ -73,8 +88,7 @@ class TestScenario {
     const ydb = await Ydb.openYdb(dbname, collections, {
       comms: [new wscomm.WebSocketComm('ws://localhost:9000')]
     })
-    await authentication.generateUserIdentity(ydb)
-    server
+    await authentication.setUserIdentity(ydb, testUser.user, await testUser.user.publicKey, testUser.privateKey)
     this.clients.push(ydb)
     return new TestClient(ydb)
   }

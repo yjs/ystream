@@ -2,6 +2,11 @@ import * as t from 'lib0/testing'
 import * as authentication from '../src/api/authentication.js'
 import * as dby from '../src/index.js'
 import * as map from 'lib0/map'
+import * as ecdsa from 'lib0/crypto/ecdsa'
+import * as encoding from 'lib0/encoding'
+import * as promise from 'lib0/promise'
+import * as buffer from 'lib0/buffer'
+import * as json from 'lib0/json'
 
 /**
  * @type {Map<string, Array<dby.Ydb>>}
@@ -23,10 +28,28 @@ const createTestDb = async tc => {
 /**
  * @param {t.TestCase} tc
  */
+export const testGenerateAuth = async tc => {
+  const userObject = await authentication.createUserIdentity({ extractable: true })
+  const [publicKey, privateKey, user] = await promise.all([
+    ecdsa.exportKeyJwk(userObject.publicKey),
+    ecdsa.exportKeyJwk(userObject.privateKey),
+    encoding.encode(encoder => userObject.userIdentity.encode(encoder))
+  ])
+  console.log({
+    publicKey: json.stringify(publicKey),
+    privateKey: json.stringify(privateKey),
+    user: buffer.toBase64(user)
+  })
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
 export const testBasic = async tc => {
   const db1 = await createTestDb(tc)
   t.assert(db1.isAuthenticated === false)
-  await authentication.generateUserIdentity(db1)
+  const { userIdentity, publicKey, privateKey } = await authentication.createUserIdentity()
+  await authentication.setUserIdentity(db1, userIdentity, publicKey, privateKey)
   t.assert(db1.isAuthenticated)
   const db2 = await createTestDb(tc)
   const device2 = await authentication.getDeviceIdentity(db2)
