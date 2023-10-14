@@ -203,7 +203,7 @@ export class UserIdentity {
   static decode (decoder) {
     decoding.readVarUint(decoder) // read a "type" byte that is reserved for future usage
     const pkey = decoding.readVarString(decoder)
-    console.log({pkey})
+    console.log({ pkey })
     return new UserIdentity(pkey)
   }
 }

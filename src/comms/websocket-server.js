@@ -24,6 +24,7 @@ import * as comm from '../comm.js' // eslint-disable-line
 import * as ydb from '../index.js'
 import * as promise from 'lib0/promise'
 import * as error from 'lib0/error'
+import * as webcrypto from 'lib0/webcrypto'
 
 const expectedBufferedAmount = 512 * 1024 // 512kb
 
@@ -55,6 +56,8 @@ class WSClient {
      * @type {Set<string>}
      */
     this.synced = new Set()
+    this.isAuthenticated = false
+    this.challenge = webcrypto.getRandomValues(new Uint8Array(64))
   }
 
   /**
@@ -128,9 +131,11 @@ export class WSServer {
         open: (ws) => {
           const client = new WSClient(ws)
           ws.getUserData().client = client
-          client.send(encoding.encode(encoder => {
-            protocol.writeInfo(encoder, ydb)
-          }))
+          ydb.whenAuthenticated.then(() => {
+            client.send(encoding.encode(encoder => {
+              protocol.writeInfo(encoder, ydb, client)
+            }))
+          })
         },
         message: (ws, message) => {
           const decoder = decoding.createDecoder(new Uint8Array(message.slice(0))) // copy buffer because uws will reuse the memory space

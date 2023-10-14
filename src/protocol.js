@@ -8,11 +8,11 @@ import * as actions from './actions.js'
 import * as map from 'lib0/map'
 import * as promise from 'lib0/promise'
 import * as logging from 'lib0/logging'
-import * as authorization from './api/authorization.js'
 import * as authentication from './api/authentication.js'
 import * as buffer from 'lib0/buffer'
-import * as webcrypto from 'lib0/webcrypto'
 import * as jose from 'lib0/crypto/jwt'
+import * as sha256 from 'lib0/hash/sha256'
+import * as string from 'lib0/string'
 
 const _log = logging.createModuleLogger('ydb/protocol')
 /**
@@ -182,12 +182,15 @@ const readInfo = async (encoder, decoder, ydb, comm) => {
   // always send the user identity in all initial requests.
   const user = dbtypes.UserIdentity.decode(decoder)
   const deviceClaim = dbtypes.DeviceClaim.decode(decoder)
+  const challenge = decoding.readVarUint8Array(decoder)
   comm.clientid = clientid
   comm.user = user
   // @todo 1. read device claim and verify it
   comm.deviceClaim = deviceClaim
-  if (!array.equalFlat(user.hash, deviceClaim.hash)) {
-    log(ydb, comm, 'InfoRejected', 'rejecting comm because client hash doesn\'t match with device claim')
+  const pay = deviceClaim.unsafeDecode().payload
+  console.log({ pay })
+  if (!array.equalFlat(user.hash, sha256.digest(string.encodeUtf8(deviceClaim.unsafeDecode().payload.iss)))) {
+    log(ydb, comm, 'InfoRejected', 'rejecting comm because client hash doesn\'t match with device claim', '\n', user.hash, deviceClaim.hash)
     error.unexpectedCase()
   }
   if (ydb.acceptNewUsers) {
@@ -199,7 +202,7 @@ const readInfo = async (encoder, decoder, ydb, comm) => {
     }
   }
   const parsedClaim = await deviceClaim.verify(await user.publicKey)
-  if (parsedClaim.payload.iss !== buffer.toBase64(user.hash)) {
+  if (parsedClaim.payload.iss !== user.ekey) {
     comm.destroy()
     error.unexpectedCase()
   }
@@ -211,6 +214,7 @@ const readInfo = async (encoder, decoder, ydb, comm) => {
   })
   // @todo send some kind of challenge
   log(ydb, comm, 'Info')
+  await writeChallengeAnswer(encoder, ydb, challenge)
 }
 
 /**
@@ -312,7 +316,7 @@ export const readMessage = async (encoder, decoder, ydb, comm) => {
     }
     return null
   } catch (err) {
-    log(ydb, comm, 'Closing connection because of unexpected error', err)
+    log(ydb, comm, 'Info rejection', 'Closing connection because of unexpected error', /** @type {Error} */ (err).stack)
     comm.destroy()
   }
 }
