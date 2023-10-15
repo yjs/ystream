@@ -169,9 +169,11 @@ export class Ydb extends ObservableV2 {
      * @type {Set<import('./comm.js').Comm>}
      */
     this.comms = new Set()
-    comms.forEach(comm =>
-      this.comms.add(comm.init(this))
-    )
+    this.whenAuthenticated.then(() => {
+      comms.forEach(comm =>
+        this.comms.add(comm.init(this))
+      )
+    })
   }
 
   /**

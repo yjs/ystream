@@ -187,8 +187,6 @@ const readInfo = async (encoder, decoder, ydb, comm) => {
   comm.user = user
   // @todo 1. read device claim and verify it
   comm.deviceClaim = deviceClaim
-  const pay = deviceClaim.unsafeDecode().payload
-  console.log({ pay })
   if (!array.equalFlat(user.hash, sha256.digest(string.encodeUtf8(deviceClaim.unsafeDecode().payload.iss)))) {
     log(ydb, comm, 'InfoRejected', 'rejecting comm because client hash doesn\'t match with device claim', '\n', user.hash, deviceClaim.hash)
     error.unexpectedCase()
@@ -197,6 +195,7 @@ const readInfo = async (encoder, decoder, ydb, comm) => {
     await authentication.registerUser(ydb, user)
   } else {
     if ((await authentication.isRegisteredUser(ydb, user)) === false) {
+      log(ydb, comm, 'destroying', 'User not registered')
       comm.destroy()
       return
     }
@@ -213,7 +212,7 @@ const readInfo = async (encoder, decoder, ydb, comm) => {
     }
   })
   // @todo send some kind of challenge
-  log(ydb, comm, 'Info')
+  log(ydb, comm, 'Info', challenge)
   await writeChallengeAnswer(encoder, ydb, challenge)
 }
 

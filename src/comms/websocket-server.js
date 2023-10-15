@@ -25,6 +25,7 @@ import * as ydb from '../index.js'
 import * as promise from 'lib0/promise'
 import * as error from 'lib0/error'
 import * as webcrypto from 'lib0/webcrypto'
+import * as authentication from '../api/authentication.js'
 
 const expectedBufferedAmount = 512 * 1024 // 512kb
 
@@ -110,6 +111,10 @@ class WSClient {
 export const createWSServer = async ({ port = 9000, dbname = '.ydb-websocket-server', acceptNewUsers = true } = {}) => {
   const db = await ydb.openYdb(dbname, ['*'], { acceptNewUsers })
   const server = new WSServer(db, port)
+  if (!db.isAuthenticated) {
+    const user = await authentication.createUserIdentity()
+    await authentication.setUserIdentity(db, user.userIdentity, user.publicKey, user.privateKey)
+  }
   await server.ready
   return server
 }
@@ -121,7 +126,8 @@ export class WSServer {
    */
   constructor (ydb, port) {
     this.ydb = ydb
-    this.ready = promise.create((resolve, reject) => {
+    this.ready = ydb.whenAuthenticated.then(() => promise.create((resolve, reject) => {
+      console.log('starting websocket server')
       uws.App({}).ws('/*', /** @type {uws.WebSocketBehavior<{ client: WSClient }>} */ ({
         /* Options */
         compression: uws.SHARED_COMPRESSOR,
@@ -131,11 +137,9 @@ export class WSServer {
         open: (ws) => {
           const client = new WSClient(ws)
           ws.getUserData().client = client
-          ydb.whenAuthenticated.then(() => {
-            client.send(encoding.encode(encoder => {
-              protocol.writeInfo(encoder, ydb, client)
-            }))
-          })
+          client.send(encoding.encode(encoder => {
+            protocol.writeInfo(encoder, ydb, client)
+          }))
         },
         message: (ws, message) => {
           const decoder = decoding.createDecoder(new Uint8Array(message.slice(0))) // copy buffer because uws will reuse the memory space
@@ -163,6 +167,6 @@ export class WSServer {
           console.log(m)
         }
       })
-    })
+    }))
   }
 }

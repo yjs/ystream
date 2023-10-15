@@ -69,9 +69,7 @@ const setupWS = comm => {
       comm.wsconnecting = false
       comm.wsconnected = true
       comm.wsUnsuccessfulReconnects = 0
-      comm.ydb.whenAuthenticated.then(() => {
-        websocket.send(encoding.encode(encoder => protocol.writeInfo(encoder, comm.ydb, comm)))
-      })
+      websocket.send(encoding.encode(encoder => protocol.writeInfo(encoder, comm.ydb, comm)))
       comm.emit('status', [{
         status: 'connected'
       }, comm])
@@ -96,6 +94,7 @@ const addReadMessage = async (comm, m) => {
     if (m === null) break
     const reply = await protocol.readMessage(encoding.createEncoder(), decoding.createDecoder(m.v), comm.ydb, comm)
     if (reply) {
+      comm.send(encoding.toUint8Array(reply))
       comm.ws?.send(encoding.toUint8Array(reply).buffer)
     }
   }
@@ -154,6 +153,7 @@ class WebSocketCommInstance extends ObservableV2 {
   }
 
   destroy () {
+    log(this, 'destroy', new Error().stack)
     this.isDestroyed = true
     this.shouldConnect = false
     this.wsconnected = false
@@ -170,7 +170,7 @@ class WebSocketCommInstance extends ObservableV2 {
   send (message) {
     if (this.ws && this.wsconnected) {
       // @todo handle the case that message could not be sent
-      this.ws.send(message)
+      this.ws.send(message.buffer) // @todo is it necessary to send buffer?
       return
     }
     this.destroy()
