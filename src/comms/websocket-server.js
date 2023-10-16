@@ -26,6 +26,7 @@ import * as promise from 'lib0/promise'
 import * as error from 'lib0/error'
 import * as webcrypto from 'lib0/webcrypto'
 import * as authentication from '../api/authentication.js'
+import * as dbtypes from '../dbtypes.js'
 
 const expectedBufferedAmount = 512 * 1024 // 512kb
 
@@ -107,13 +108,18 @@ class WSClient {
  * @param {number} [options.port]
  * @param {string} [options.dbname]
  * @param {boolean} [options.acceptNewUsers]
+ * @param {{ user: dbtypes.UserIdentity, privateKey: CryptoKey }} [options.identity]
  */
-export const createWSServer = async ({ port = 9000, dbname = '.ydb-websocket-server', acceptNewUsers = true } = {}) => {
+export const createWSServer = async ({ port = 9000, dbname = '.ydb-websocket-server', acceptNewUsers = true, identity } = {}) => {
   const db = await ydb.openYdb(dbname, ['*'], { acceptNewUsers })
   const server = new WSServer(db, port)
   if (!db.isAuthenticated) {
-    const user = await authentication.createUserIdentity()
-    await authentication.setUserIdentity(db, user.userIdentity, user.publicKey, user.privateKey)
+    if (identity) {
+      await authentication.setUserIdentity(db, identity.user, await identity.user.publicKey, identity.privateKey)
+    } else {
+      const user = await authentication.createUserIdentity()
+      await authentication.setUserIdentity(db, user.userIdentity, user.publicKey, user.privateKey)
+    }
   }
   await server.ready
   return server

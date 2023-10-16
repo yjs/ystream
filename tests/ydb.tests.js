@@ -3,6 +3,7 @@ import * as promise from 'lib0/promise'
 
 import * as Ydb from '../src/index.js'
 import * as helpers from './helpers.js'
+import * as authentication from '../src/api/authentication.js'
 // import * as actions from '../src/actions.js'
 // import * as operations from '../src/operations.js'
 
@@ -19,10 +20,10 @@ const getDbName = testname => '.test_dbs/' + testname
 export const testYdocLoad = async tc => {
   await Ydb.deleteYdb(getDbName(tc.testName))
   const ydb = await Ydb.openYdb(getDbName(tc.testName), ['collection'])
-  const ydoc1 = ydb.getYdoc('collection', 'doc1')
+  const ydoc1 = ydb.getYdoc('collection', 'ydoc')
   await ydoc1.whenLoaded
   ydoc1.getMap().set('k', 'v')
-  const ydoc2 = ydb.getYdoc('collection', 'doc1')
+  const ydoc2 = ydb.getYdoc('collection', 'ydoc')
   await ydoc2.whenLoaded
   t.assert(ydoc2.getMap().get('k') === 'v')
   ydoc1.getMap().set('k', 'v2')
@@ -32,7 +33,7 @@ export const testYdocLoad = async tc => {
   console.log('after destroy')
   const ydb2 = await Ydb.openYdb(getDbName(tc.testName), ['collection'])
   console.log('after open')
-  const ydoc3 = ydb2.getYdoc('collection', 'doc1')
+  const ydoc3 = ydb2.getYdoc('collection', 'ydoc')
   console.log('after getdoc')
   await ydoc3.whenLoaded
   console.log('after loaded')
@@ -45,6 +46,8 @@ export const testYdocLoad = async tc => {
 export const testComm = async tc => {
   const th = helpers.createTestScenario(tc)
   const [{ ydb: ydb1 }, { ydb: ydb2 }] = await th.createClients(2)
+  console.log('ydb1 user hashes: ', await authentication.getAllRegisteredUserHashes(ydb1))
+  console.log('ydb2 user hashes: ', await authentication.getAllRegisteredUserHashes(ydb2))
   await promise.all([ydb1.whenSynced, ydb2.whenSynced])
   const ydoc1 = ydb1.getYdoc('c1', 'ydoc')
   ydoc1.getMap().set('k', 'v1')

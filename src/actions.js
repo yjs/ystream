@@ -337,7 +337,7 @@ export const applyRemoteOps = (ydb, ops, user) => {
      * @type {Map<string,dbtypes.ClientClockValue>}
      */
     const clientClockEntries = new Map()
-    const filteredOps = ops.filter(op => op.clock > (clocks.get(encodeClocksKey(op.client, op.collection)) || -1))
+    const filteredOps = ops.filter(op => op.client !== ydb.clientid && op.clock > (clocks.get(encodeClocksKey(op.client, op.collection)) || -1))
     /**
      * @type {Map<string,Map<string,boolean>>}
      */
@@ -354,6 +354,8 @@ export const applyRemoteOps = (ydb, ops, user) => {
         const localClock = await tr.tables.oplog.add(op)
         op.localClock = localClock.v
         clientClockEntries.set(encodeClocksKey(op.client, op.collection), new dbtypes.ClientClockValue(op.clock, op.localClock))
+      } else {
+        console.log('Not applying op because of missing permission')
       }
     }))
     clientClockEntries.forEach((clockValue, encClocksKey) => {
@@ -362,6 +364,7 @@ export const applyRemoteOps = (ydb, ops, user) => {
     })
     emitOpsEvent(ydb, filteredOps)
   })
+  // @todo only apply doc ops to ydocs if sender has write permissions
   /**
    * @type {Map<string, Map<string, Array<dbtypes.OpValue>>>}
    */

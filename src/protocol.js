@@ -21,7 +21,7 @@ const _log = logging.createModuleLogger('ydb/protocol')
  * @param {string} type
  * @param {...any} args
  */
-const log = (ydb, comm, type, ...args) => _log(logging.PURPLE, `(local=${ydb.clientid.toString(36).slice(0, 4)},remote=${comm.clientid.toString(36).slice(0, 4)}) `, logging.ORANGE, '[' + type + '] ', logging.GREY, ...args)
+const log = (ydb, comm, type, ...args) => _log(logging.PURPLE, `(local=${ydb.clientid.toString(36).slice(0, 4)},remote=${comm.clientid.toString(36).slice(0, 4)}${ydb.syncsEverything ? ',server=true' : ''}) `, logging.ORANGE, '[' + type + '] ', logging.GREY, ...args)
 
 const messageOps = 0
 const messageRequestOps = 1
@@ -56,6 +56,7 @@ const readOps = (decoder, ydb, comm) => {
     ops.push(/** @type {dbtypes.OpValue} */ (dbtypes.OpValue.decode(decoder)))
   }
   log(ydb, comm, 'Ops', `received ${ops.length} ops`)
+  console.log(ops)
   if (comm.user == null) {
     error.unexpectedCase()
   }
@@ -194,6 +195,8 @@ const readInfo = async (encoder, decoder, ydb, comm) => {
   if (ydb.acceptNewUsers) {
     await authentication.registerUser(ydb, user)
   } else {
+    console.log('searching user.. ', new Uint8Array(user.hash))
+    console.log('users..', await authentication.getAllRegisteredUserHashes(ydb))
     if ((await authentication.isRegisteredUser(ydb, user)) === false) {
       log(ydb, comm, 'destroying', 'User not registered')
       comm.destroy()
@@ -228,13 +231,9 @@ const readChallengeAnswer = async (encoder, decoder, ydb, comm) => {
     error.unexpectedCase()
   }
   const jwt = decoding.readVarString(decoder)
-  try {
-    const { payload: { sub } } = await jose.verifyJwt(await deviceClaim.dpkey, jwt)
-    if (sub !== comm.challenge) {
-      throw new Error('Wrong challenge')
-    }
-  } catch (err) {
-    comm.destroy()
+  const { payload: { sub } } = await jose.verifyJwt(await deviceClaim.dpkey, jwt)
+  if (sub !== buffer.toBase64(comm.challenge)) {
+    throw new Error('Wrong challenge')
   }
   comm.isAuthenticated = true
   // @todo now send requestOps

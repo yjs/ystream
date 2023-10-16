@@ -40,7 +40,7 @@ export class OpValue {
    * @param {encoding.Encoder} encoder
    */
   encode (encoder) {
-    encoding.writeUint8(encoder, operations.OpYjsUpdateType)
+    encoding.writeUint8(encoder, this.op.type)
     encoding.writeVarUint(encoder, this.client)
     encoding.writeVarUint(encoder, this.clock)
     encoding.writeVarString(encoder, this.collection)

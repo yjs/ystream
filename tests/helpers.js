@@ -7,6 +7,7 @@ import * as wscomm from '../src/comms/websocket.js'
 import * as env from 'lib0/environment'
 import * as random from 'lib0/random'
 import * as authentication from '../src/api/authentication.js'
+import * as authorization from '../src/api/authorization.js'
 import * as json from 'lib0/json'
 import * as buffer from 'lib0/buffer'
 import * as dbtypes from '../src/dbtypes.js'
@@ -24,9 +25,19 @@ const testUserRaw = {
   user: 'AMgBeyJrZXlfb3BzIjpbInZlcmlmeSJdLCJleHQiOnRydWUsImt0eSI6IkVDIiwieCI6InBBVW1MWWMtVUZtUEl0N2xlYWZQVGJoeFF5eWdjYVc3X19uUGNVTkN1dTB3SDI3eVM5UF9wV0ZQMUd3Y3NvQU4iLCJ5IjoidTMxMDlLanJQR3NOVW4yazVXaG4ydUhMQWNrUVBkTE5xdE00R3BCRXBVSndsdlZEdms3MS1sUzNZT0VZSl9TcSIsImNydiI6IlAtMzg0In0='
 }
 
+const testServerIdentityRaw = {
+  privateKey: '{"key_ops":["sign"],"ext":true,"kty":"EC","x":"CYwMakpn0onaNeCa-wqLn4Fzsris_UY4Z5gRQUA9xQOoh94YG9OHhItr6rovaYpZ","y":"74Ulju86IUMJZsYsSjxSjusLjj9U6rozZwbK9Xaqj3MgIWtnjNyjL1D-NzOP3FJ7","crv":"P-384","d":"-yKNOty9EshGL0yAOQ2q6c_b_PNCpeEK9FVPoB0wc9EUyt9BR4DZuqrC9t_DgNaF"}',
+  user: 'AMgBeyJrZXlfb3BzIjpbInZlcmlmeSJdLCJleHQiOnRydWUsImt0eSI6IkVDIiwieCI6IkNZd01ha3BuMG9uYU5lQ2Etd3FMbjRGenNyaXNfVVk0WjVnUlFVQTl4UU9vaDk0WUc5T0hoSXRyNnJvdmFZcFoiLCJ5IjoiNzRVbGp1ODZJVU1KWnNZc1NqeFNqdXNMamo5VTZyb3pad2JLOVhhcWozTWdJV3Ruak55akwxRC1Oek9QM0ZKNyIsImNydiI6IlAtMzg0In0='
+}
+
 const testUser = {
   privateKey: await ecdsa.importKeyJwk(json.parse(testUserRaw.privateKey)),
   user: dbtypes.UserIdentity.decode(decoding.createDecoder(buffer.fromBase64(testUserRaw.user)))
+}
+
+const testServerIdentity = {
+  privateKey: await ecdsa.importKeyJwk(json.parse(testServerIdentityRaw.privateKey)),
+  user: dbtypes.UserIdentity.decode(decoding.createDecoder(buffer.fromBase64(testServerIdentityRaw.user)))
 }
 
 /**
@@ -40,14 +51,20 @@ if (env.isNode) {
     fs.rmSync('./.test_dbs', { recursive: true })
   } catch (e) {}
   const { createWSServer } = await import('../src/comms/websocket-server.js')
-  server = await createWSServer({ dbname: `.test_dbs/${randTestRunName}-server` })
+  server = await createWSServer({ dbname: `.test_dbs/${randTestRunName}-server`, identity: testServerIdentity })
   await authentication.registerUser(server.ydb, testUser.user)
+  // @todo add roles and default permissions to colletcions
+  authorization.updateCollaborator(server.ydb, 'c1', 'ydoc', testUser.user, 'admin')
+  authorization.updateCollaborator(server.ydb, 'c2', 'ydoc', testUser.user, 'admin')
+  authorization.updateCollaborator(server.ydb, 'c3', 'ydoc', testUser.user, 'admin')
+  authorization.updateCollaborator(server.ydb, 'collection', 'ydoc', testUser.user, 'admin')
+  console.log('server registered user hashes: ', await authentication.getAllRegisteredUserHashes(server.ydb))
 }
 
 /**
  * @param {t.TestCase} tc
  */
-const getDbName = tc => `.test_dbs/${randTestRunName}/${tc.moduleName}/${tc.testName}`
+export const getDbName = tc => `.test_dbs/${randTestRunName}/${tc.moduleName}/${tc.testName}`
 
 export const emptyUpdate = Y.encodeStateAsUpdateV2(new Y.Doc())
 
@@ -57,7 +74,7 @@ class TestClient {
    */
   constructor (ydb) {
     this.ydb = ydb
-    this.doc1 = ydb.getYdoc('c1', 'testdoc')
+    this.doc1 = ydb.getYdoc('c1', 'ydoc')
   }
 }
 
@@ -90,6 +107,12 @@ class TestScenario {
       comms: [new wscomm.WebSocketComm('ws://localhost:9000')]
     })
     await authentication.setUserIdentity(ydb, testUser.user, await testUser.user.publicKey, testUser.privateKey)
+    await authentication.registerUser(ydb, testServerIdentity.user)
+    // @todo if collection content is empty, we should simply trust the server
+    authorization.updateCollaborator(ydb, 'c1', 'ydoc', testServerIdentity.user, 'admin')
+    authorization.updateCollaborator(ydb, 'c2', 'ydoc', testServerIdentity.user, 'admin')
+    authorization.updateCollaborator(ydb, 'c3', 'ydoc', testServerIdentity.user, 'admin')
+    authorization.updateCollaborator(ydb, 'collection', 'ydoc', testServerIdentity.user, 'admin')
     this.clients.push(ydb)
     return new TestClient(ydb)
   }

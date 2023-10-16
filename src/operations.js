@@ -279,6 +279,7 @@ export class OpYjsUpdate {
    */
   static merge (ops, gc) {
     let update
+    // @todo if ops.length === 1 return ops[0]
     if (gc) {
       const ydoc = new Y.Doc()
       ydoc.transact(() => {

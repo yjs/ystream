@@ -71,7 +71,9 @@ export const createDeviceClaim = (ydb, deviceIdentity) =>
  */
 export const registerUser = (ydb, user) =>
   ydb.db.transact(async tr => {
-    tr.tables.users.add(user)
+    if ((await tr.tables.users.indexes.hash.get(user.hash)) == null) {
+      await tr.tables.users.add(user)
+    }
   })
 
 /**
@@ -166,3 +168,11 @@ export const getUserIdentity = ydb =>
     if (uid == null) error.unexpectedCase()
     return uid
   })
+
+/**
+ * @param {Ydb} ydb
+ */
+export const getAllRegisteredUserHashes = ydb => ydb.db.transact(async tr => {
+  const users = await tr.tables.users.getValues()
+  return users.map(user => new Uint8Array(user.hash))
+})
