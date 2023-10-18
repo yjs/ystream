@@ -3,7 +3,7 @@ import * as utils from '../src/utils.js'
 import * as actions from '../src/actions.js'
 import * as operations from '../src/operations.js'
 import * as dbtypes from '../src/dbtypes.js'
-import { emptyUpdate, createTestScenario, getDbName } from './helpers.js'
+import { emptyUpdate, getDbName } from './helpers.js'
 import * as D from '../src/index.js'
 
 /**

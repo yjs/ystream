@@ -2,6 +2,7 @@ import * as dbtypes from '../dbtypes.js' // eslint-disable-line
 import * as actions from '../actions.js'
 import * as operations from '../operations.js'
 import * as buffer from 'lib0/buffer'
+import * as promise from 'lib0/promise'
 
 /**
  * @typedef {import('../ydb.js').Ydb} Ydb
@@ -35,7 +36,7 @@ export const getPermOp = async (ydb, collection, doc) =>
  * @param {string} doc
  * @param {dbtypes.UserIdentity} user
  */
-export const hasReadAccess = async (ydb, collection, doc, user) => getPermOp(ydb, collection, doc).then(opperm => opperm.hasReadAccess(buffer.toBase64(user.hash)))
+export const hasReadAccess = async (ydb, collection, doc, user) => user.isTrusted ? promise.resolveWith(true) : getPermOp(ydb, collection, doc).then(opperm => opperm.hasReadAccess(buffer.toBase64(user.hash)))
 
 /**
  * @param {Ydb} ydb
@@ -43,4 +44,4 @@ export const hasReadAccess = async (ydb, collection, doc, user) => getPermOp(ydb
  * @param {string} doc
  * @param {dbtypes.UserIdentity} user
  */
-export const hasWriteAccess = async (ydb, collection, doc, user) => getPermOp(ydb, collection, doc).then(opperm => opperm.hasWriteAccess(buffer.toBase64(user.hash)))
+export const hasWriteAccess = async (ydb, collection, doc, user) => user.isTrusted ? promise.resolveWith(true) : getPermOp(ydb, collection, doc).then(opperm => opperm.hasWriteAccess(buffer.toBase64(user.hash)))

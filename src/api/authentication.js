@@ -68,11 +68,13 @@ export const createDeviceClaim = (ydb, deviceIdentity) =>
  *
  * @param {Ydb} ydb
  * @param {dbtypes.UserIdentity} user
+ * @param {Object} opts
+ * @param {boolean} [opts.isTrusted]
  */
-export const registerUser = (ydb, user) =>
+export const registerUser = (ydb, user, { isTrusted = false } = {}) =>
   ydb.db.transact(async tr => {
     if ((await tr.tables.users.indexes.hash.get(user.hash)) == null) {
-      await tr.tables.users.add(user)
+      await tr.tables.users.add(new dbtypes.UserIdentity(user.ekey, { isTrusted }))
     }
   })
 

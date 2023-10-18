@@ -355,7 +355,7 @@ export const applyRemoteOps = (ydb, ops, user) => {
         op.localClock = localClock.v
         clientClockEntries.set(encodeClocksKey(op.client, op.collection), new dbtypes.ClientClockValue(op.clock, op.localClock))
       } else {
-        console.log('Not applying op because of missing permission')
+        console.log('Not applying op because of missing permission', op, ydb.syncsEverything, user.hash, user.isTrusted)
       }
     }))
     clientClockEntries.forEach((clockValue, encClocksKey) => {

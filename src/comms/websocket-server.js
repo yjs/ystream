@@ -26,7 +26,7 @@ import * as promise from 'lib0/promise'
 import * as error from 'lib0/error'
 import * as webcrypto from 'lib0/webcrypto'
 import * as authentication from '../api/authentication.js'
-import * as dbtypes from '../dbtypes.js'
+import * as dbtypes from '../dbtypes.js' // eslint-disable-line
 
 const expectedBufferedAmount = 512 * 1024 // 512kb
 

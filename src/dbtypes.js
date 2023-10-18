@@ -170,9 +170,12 @@ export class CollectionKey {
 export class UserIdentity {
   /**
    * @param {string} encodedPublicKey stringified jwk
+   * @param {object} opts
+   * @param {boolean} [opts.isTrusted]
    */
-  constructor (encodedPublicKey) {
+  constructor (encodedPublicKey, { isTrusted = false } = {}) {
     this.ekey = encodedPublicKey
+    this.isTrusted = isTrusted
     this._hash = null
     this._publicKey = null
   }
@@ -192,7 +195,7 @@ export class UserIdentity {
    * @param {encoding.Encoder} encoder
    */
   encode (encoder) {
-    encoding.writeVarUint(encoder, 0)
+    encoding.writeVarUint(encoder, this.isTrusted ? 1 : 0)
     encoding.writeVarString(encoder, this.ekey)
   }
 
@@ -201,10 +204,9 @@ export class UserIdentity {
    * @return {UserIdentity}
    */
   static decode (decoder) {
-    decoding.readVarUint(decoder) // read a "type" byte that is reserved for future usage
+    const isTrusted = decoding.readVarUint(decoder) === 1
     const pkey = decoding.readVarString(decoder)
-    console.log({ pkey })
-    return new UserIdentity(pkey)
+    return new UserIdentity(pkey, { isTrusted })
   }
 }
 

@@ -106,13 +106,9 @@ class TestScenario {
     const ydb = await Ydb.openYdb(dbname, collections, {
       comms: [new wscomm.WebSocketComm('ws://localhost:9000')]
     })
+    console.log('registering server', testServerIdentity.user, testServerIdentity.user.hash)
+    await authentication.registerUser(ydb, testServerIdentity.user, { isTrusted: true })
     await authentication.setUserIdentity(ydb, testUser.user, await testUser.user.publicKey, testUser.privateKey)
-    await authentication.registerUser(ydb, testServerIdentity.user)
-    // @todo if collection content is empty, we should simply trust the server
-    authorization.updateCollaborator(ydb, 'c1', 'ydoc', testServerIdentity.user, 'admin')
-    authorization.updateCollaborator(ydb, 'c2', 'ydoc', testServerIdentity.user, 'admin')
-    authorization.updateCollaborator(ydb, 'c3', 'ydoc', testServerIdentity.user, 'admin')
-    authorization.updateCollaborator(ydb, 'collection', 'ydoc', testServerIdentity.user, 'admin')
     this.clients.push(ydb)
     return new TestClient(ydb)
   }
