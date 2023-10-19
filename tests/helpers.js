@@ -54,10 +54,10 @@ if (env.isNode) {
   server = await createWSServer({ dbname: `.test_dbs/${randTestRunName}-server`, identity: testServerIdentity })
   await authentication.registerUser(server.ydb, testUser.user)
   // @todo add roles and default permissions to colletcions
-  authorization.updateCollaborator(server.ydb, 'c1', 'ydoc', testUser.user, 'admin')
-  authorization.updateCollaborator(server.ydb, 'c2', 'ydoc', testUser.user, 'admin')
-  authorization.updateCollaborator(server.ydb, 'c3', 'ydoc', testUser.user, 'admin')
-  authorization.updateCollaborator(server.ydb, 'collection', 'ydoc', testUser.user, 'admin')
+  await authorization.updateCollaborator(server.ydb, 'c1', 'ydoc', testUser.user, 'admin')
+  await authorization.updateCollaborator(server.ydb, 'c2', 'ydoc', testUser.user, 'admin')
+  await authorization.updateCollaborator(server.ydb, 'c3', 'ydoc', testUser.user, 'admin')
+  await authorization.updateCollaborator(server.ydb, 'collection', 'ydoc', testUser.user, 'admin')
   console.log('server registered user hashes: ', await authentication.getAllRegisteredUserHashes(server.ydb))
 }
 

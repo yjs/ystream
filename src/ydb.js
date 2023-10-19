@@ -170,6 +170,7 @@ export class Ydb extends ObservableV2 {
      */
     this.comms = new Set()
     this.whenAuthenticated.then(() => {
+      console.log(this.clientid.toString(36) + ': connecting to server')
       comms.forEach(comm =>
         this.comms.add(comm.init(this))
       )

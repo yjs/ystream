@@ -82,19 +82,24 @@ class WSClient {
   async _drain () {
     if (this._isDraining) return
     this._isDraining = true
-    let bufferedAmount = this.ws.getBufferedAmount()
-    while (this.nextOps.length > 0 && bufferedAmount < expectedBufferedAmount) {
-      const encoder = encoding.createEncoder()
-      if (!(await this.nextOps[0](encoder))) {
-        this.nextOps.shift()
+    try {
+      let bufferedAmount = this.ws.getBufferedAmount()
+      while (this.nextOps.length > 0 && bufferedAmount < expectedBufferedAmount) {
+        // @todo create a test that makes sure that _drain is eventually called once buffer is freed
+        const encoder = encoding.createEncoder()
+        if (!(await this.nextOps[0](encoder))) {
+          this.nextOps.shift()
+        }
+        if (encoding.hasContent(encoder)) {
+          const message = encoding.toUint8Array(encoder)
+          bufferedAmount += message.byteLength
+          this.send(message)
+        }
       }
-      if (encoding.hasContent(encoder)) {
-        const message = encoding.toUint8Array(encoder)
-        bufferedAmount += message.byteLength
-        this.send(message)
-      }
+    } finally {
+      this._isDraining = false
+      // @todo destroy conn in case of an error
     }
-    this._isDraining = false
   }
 
   destroy () {

@@ -356,6 +356,14 @@ export const applyRemoteOps = (ydb, ops, user) => {
         clientClockEntries.set(encodeClocksKey(op.client, op.collection), new dbtypes.ClientClockValue(op.clock, op.localClock))
       } else {
         console.log('Not applying op because of missing permission', op, ydb.syncsEverything, user.hash, user.isTrusted)
+        // @todo remove this
+        const users = await ydb.db.transact(tr => {
+          return tr.tables.users.getValues()
+        })
+        const userHashes = await ydb.db.transact(tr => {
+          return tr.tables.users.indexes.hash.getEntries()
+        })
+        console.log(users, userHashes)
       }
     }))
     clientClockEntries.forEach((clockValue, encClocksKey) => {

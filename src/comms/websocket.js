@@ -89,14 +89,16 @@ const addReadMessage = async (comm, m) => {
   const wasEmpty = queue.isEmpty(readMessageQueue)
   queue.enqueue(readMessageQueue, new queue.QueueValue(m))
   if (!wasEmpty) return
-  while (true) {
-    const m = queue.dequeue(readMessageQueue)
-    if (m === null) break
-    const reply = await protocol.readMessage(encoding.createEncoder(), decoding.createDecoder(m.v), comm.ydb, comm)
+  /**
+   * @type {Uint8Array|undefined}
+   */
+  let currMessage
+  while ((currMessage = readMessageQueue.start?.v) != null) {
+    const reply = await protocol.readMessage(encoding.createEncoder(), decoding.createDecoder(currMessage), comm.ydb, comm)
     if (reply) {
       comm.send(encoding.toUint8Array(reply))
-      comm.ws?.send(encoding.toUint8Array(reply).buffer)
     }
+    queue.dequeue(readMessageQueue)
   }
 }
 
@@ -170,7 +172,7 @@ class WebSocketCommInstance extends ObservableV2 {
   send (message) {
     if (this.ws && this.wsconnected) {
       // @todo handle the case that message could not be sent
-      this.ws.send(message.buffer) // @todo is it necessary to send buffer?
+      this.ws.send(message)
       return
     }
     this.destroy()

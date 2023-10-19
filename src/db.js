@@ -199,10 +199,11 @@ export const createDb = dbname =>
           tr.objects.device.set('public', publicDeviceKey),
           tr.objects.device.set('identity', new dbtypes.DeviceIdentity(json.stringify(await ecdsa.exportKeyJwk(publicDeviceKey))))
         ])
-      } else if (await tr.objects.device.get('claim')) {
+      } else if ((deviceClaim = await tr.objects.device.get('claim'))) {
         isAuthenticated = true
         user = await tr.objects.user.get('identity')
-        deviceClaim = await tr.objects.device.get('claim')
+        // @todo remove
+        if (user == null) throw new Error('user should be defined')
       }
       return { isAuthenticated, idb, user, deviceClaim }
     })
