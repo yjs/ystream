@@ -56,7 +56,7 @@ const readOps = (decoder, ydb, comm) => {
     ops.push(/** @type {dbtypes.OpValue} */ (dbtypes.OpValue.decode(decoder)))
   }
   log(ydb, comm, 'Ops', `received ${ops.length} ops`)
-  console.log(ops)
+  // console.log(ops)
   if (comm.user == null) {
     error.unexpectedCase()
   }
@@ -184,20 +184,19 @@ const readInfo = async (encoder, decoder, ydb, comm) => {
   const user = dbtypes.UserIdentity.decode(decoder)
   const deviceClaim = dbtypes.DeviceClaim.decode(decoder)
   const challenge = decoding.readVarUint8Array(decoder)
+  const registeredUser = await authentication.getRegisteredUser(ydb, user)
   comm.clientid = clientid
-  comm.user = user
+  comm.user = registeredUser || user
   // @todo 1. read device claim and verify it
   comm.deviceClaim = deviceClaim
   if (!array.equalFlat(user.hash, sha256.digest(string.encodeUtf8(deviceClaim.unsafeDecode().payload.iss)))) {
     log(ydb, comm, 'InfoRejected', 'rejecting comm because client hash doesn\'t match with device claim', '\n', user.hash, deviceClaim.hash)
     error.unexpectedCase()
   }
-  if (ydb.acceptNewUsers) {
-    await authentication.registerUser(ydb, user)
-  } else {
-    console.log('searching user.. ', new Uint8Array(user.hash))
-    console.log('users..', await authentication.getAllRegisteredUserHashes(ydb))
-    if ((await authentication.isRegisteredUser(ydb, user)) === false) {
+  if (registeredUser == null) {
+    if (ydb.acceptNewUsers) {
+      await authentication.registerUser(ydb, user)
+    } else {
       log(ydb, comm, 'destroying', 'User not registered')
       comm.destroy()
       return

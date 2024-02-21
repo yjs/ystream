@@ -182,7 +182,9 @@ export class Ydb extends ObservableV2 {
    * @param {string} docname
    */
   getYdoc (collection, docname) {
-    const col = this.collections.get(collection)
+    const col = this.syncsEverything
+      ? map.setIfUndefined(this.collections, collection, map.create)
+      : this.collections.get(collection)
     if (col == null) { throw new Error('Collection was not specified') }
     const docset = map.setIfUndefined(col, docname, () => new Set())
     const ydoc = new Y.Doc({

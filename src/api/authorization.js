@@ -34,9 +34,21 @@ export const getPermOp = async (ydb, collection, doc) =>
  * @param {Ydb} ydb
  * @param {string} collection
  * @param {string} doc
- * @param {dbtypes.UserIdentity} user
+ * @param {function(operations.OpPerm):boolean} checker
  */
-export const hasReadAccess = async (ydb, collection, doc, user) => user.isTrusted ? promise.resolveWith(true) : getPermOp(ydb, collection, doc).then(opperm => opperm.hasReadAccess(buffer.toBase64(user.hash)))
+const _checkStreamAccess = (ydb, collection, doc, checker) => getPermOp(ydb, collection, doc).then(checker)
+
+/**
+ * @param {Ydb} ydb
+ * @param {string} collection
+ * @param {string} doc
+ * @param {function(operations.OpPerm):boolean} checker
+ */
+const checkAccess = async (ydb, collection, doc, checker) => {
+  const hasAccessStream = await _checkStreamAccess(ydb, collection, '*', checker)
+  if (hasAccessStream) return hasAccessStream
+  return await _checkStreamAccess(ydb, collection, doc, checker)
+}
 
 /**
  * @param {Ydb} ydb
@@ -44,4 +56,12 @@ export const hasReadAccess = async (ydb, collection, doc, user) => user.isTruste
  * @param {string} doc
  * @param {dbtypes.UserIdentity} user
  */
-export const hasWriteAccess = async (ydb, collection, doc, user) => user.isTrusted ? promise.resolveWith(true) : getPermOp(ydb, collection, doc).then(opperm => opperm.hasWriteAccess(buffer.toBase64(user.hash)))
+export const hasReadAccess = async (ydb, collection, doc, user) => user.isTrusted ? promise.resolveWith(true) : checkAccess(ydb, collection, doc, opperm => opperm.hasReadAccess(buffer.toBase64(user.hash)))
+
+/**
+ * @param {Ydb} ydb
+ * @param {string} collection
+ * @param {string} doc
+ * @param {dbtypes.UserIdentity} user
+ */
+export const hasWriteAccess = async (ydb, collection, doc, user) => user.isTrusted ? promise.resolveWith(true) : checkAccess(ydb, collection, doc, opperm => opperm.hasWriteAccess(buffer.toBase64(user.hash)))

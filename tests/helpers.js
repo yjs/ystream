@@ -43,7 +43,7 @@ const testServerIdentity = {
 /**
  * @type {import('../src/comms/websocket-server.js').WSServer|null}
  */
-let server = null
+export let server = null
 
 if (env.isNode) {
   const fs = await import('fs')
@@ -55,6 +55,7 @@ if (env.isNode) {
   await authentication.registerUser(server.ydb, testUser.user)
   // @todo add roles and default permissions to colletcions
   await authorization.updateCollaborator(server.ydb, 'c1', 'ydoc', testUser.user, 'admin')
+  await authorization.updateCollaborator(server.ydb, 'c1', '*', testUser.user, 'admin')
   await authorization.updateCollaborator(server.ydb, 'c2', 'ydoc', testUser.user, 'admin')
   await authorization.updateCollaborator(server.ydb, 'c3', 'ydoc', testUser.user, 'admin')
   await authorization.updateCollaborator(server.ydb, 'collection', 'ydoc', testUser.user, 'admin')

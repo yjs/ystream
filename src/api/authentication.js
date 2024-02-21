@@ -91,6 +91,17 @@ export const isRegisteredUser = (ydb, user) =>
   )
 
 /**
+ * Checks whether a user is registered in this database.
+ *
+ * @param {Ydb} ydb
+ * @param {dbtypes.UserIdentity} user
+ */
+export const getRegisteredUser = (ydb, user) =>
+  ydb.db.transact(tr =>
+    tr.tables.users.indexes.hash.get(user.hash)
+  )
+
+/**
  * @param {Ydb} ydb
  * @param {Uint8Array} userHash
  * @param {string} jwt

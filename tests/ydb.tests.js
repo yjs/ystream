@@ -3,6 +3,7 @@ import * as promise from 'lib0/promise'
 
 import * as Ydb from '../src/index.js'
 import * as helpers from './helpers.js'
+import * as error from 'lib0/error'
 import * as authentication from '../src/api/authentication.js'
 // import * as actions from '../src/actions.js'
 // import * as operations from '../src/operations.js'
@@ -70,4 +71,68 @@ export const testComm = async tc => {
   // console.log('updates', ydb1.clientid, await actions.getDocOps(ydb1, 'c1', 'ydoc', operations.OpYjsUpdateType, 0))
   // console.log('updates 2', ydb2.clientid, await actions.getDocOps(ydb2, 'c1', 'ydoc', operations.OpYjsUpdateType, 0))
   // console.log('updates 3', ydb3.clientid, await actions.getDocOps(ydb3, 'c1', 'ydoc', operations.OpYjsUpdateType, 0))
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testPerformanceLoadingManyDocs = async tc => {
+  const N = 1000
+  await Ydb.deleteYdb(getDbName(tc.testName))
+  const ydb = await Ydb.openYdb(getDbName(tc.testName), ['collection'])
+  await t.measureTimeAsync(`Create ${N} documents with initial content`, async () => {
+    for (let i = 0; i < N; i++) {
+      const ydoc = ydb.getYdoc('collection', 'doc-' + i)
+      ydoc.getMap().set('i', i)
+    }
+    const lastdoc = ydb.getYdoc('collection', 'doc-' + (N - 1))
+    await lastdoc.whenLoaded
+    t.assert(lastdoc.getMap().get('i') === N - 1)
+  })
+  const ydb2 = await Ydb.openYdb(getDbName(tc.testName), ['collection'])
+  await t.measureTimeAsync(`Loading ${N} documents with initial content`, async () => {
+    const ps = []
+    for (let i = 0; i < N; i++) {
+      const ydoc = ydb2.getYdoc('collection', 'doc-' + i)
+      ps.push(ydoc.whenLoaded.then(() => {
+        if (ydoc.getMap().get('i') !== i) {
+          return promise.reject(error.create(`content on doc ${i} not properly loaded`))
+        }
+      }))
+    }
+    await promise.all(ps)
+  })
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testPerformanceSyncingManyDocs = async tc => {
+  const N = 1
+  const th = helpers.createTestScenario(tc)
+  const server = th.server
+  if (server === null) {
+    return t.skip()
+  }
+  const [{ ydb: ydb1 }] = await th.createClients(1)
+  await t.measureTimeAsync(`Sync ${N} documents with content to server`, async () => {
+    for (let i = 0; i < N; i++) {
+      const ydoc = ydb1.getYdoc('c1', 'doc-' + i)
+      ydoc.getMap().set('i', i)
+    }
+    const lastClientDoc = ydb1.getYdoc('c1', 'doc-' + (N - 1))
+    await lastClientDoc.whenLoaded
+    const lastServerDoc = server.ydb.getYdoc('c1', 'doc-' + (N - 1))
+    await lastServerDoc.whenLoaded
+    await helpers.waitDocsSynced(lastClientDoc, lastServerDoc)
+    t.assert(lastServerDoc.getMap().get('i') === N - 1)
+  })
+  const [{ ydb: ydb2 }] = await th.createClients(1)
+  await t.measureTimeAsync(`Sync ${N} documents with content from server`, async () => {
+    const lastClientDoc = ydb2.getYdoc('c1', 'doc-' + (N - 1))
+    const lastServerDoc = server.ydb.getYdoc('c1', 'doc-' + (N - 1))
+    await lastServerDoc.whenLoaded
+    await helpers.waitDocsSynced(lastClientDoc, lastServerDoc)
+    t.assert(lastClientDoc.getMap().get('i') === N - 1)
+  })
 }

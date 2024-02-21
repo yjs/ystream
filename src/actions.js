@@ -316,8 +316,12 @@ export const getClocks = ydb =>
  * @param {Array<dbtypes.OpValue>} ops
  * @param {dbtypes.UserIdentity} user
  */
-export const applyRemoteOps = (ydb, ops, user) => {
-  const p = ydb.db.transact(async tr => {
+export const applyRemoteOps = async (ydb, ops, user) => {
+  /**
+   * @type {Array<dbtypes.OpValue<any>>}
+   */
+  const filteredOpsPermsChecked = []
+  await ydb.db.transact(async tr => {
     /**
      * Maps from encoded(collection/doc/clientid) to clock
      * @type {Map<string,number>}
@@ -338,22 +342,30 @@ export const applyRemoteOps = (ydb, ops, user) => {
      */
     const clientClockEntries = new Map()
     const filteredOps = ops.filter(op => op.client !== ydb.clientid && op.clock > (clocks.get(encodeClocksKey(op.client, op.collection)) || -1))
+    console.log('applying ops: ', filteredOps)
     /**
      * @type {Map<string,Map<string,boolean>>}
      */
     const permissions = new Map()
     filteredOps.forEach(op => { map.setIfUndefined(permissions, op.collection, () => new Map()).set(op.doc, false) })
-    await promise.all(array.from(permissions.entries()).map(([collectionName, docs]) =>
-      promise.all(array.from(docs.keys()).map(
-        docName => authorization.hasWriteAccess(ydb, collectionName, docName, user).then(hasWriteAccess => docs.set(docName, hasWriteAccess))
-      ))
-    ))
+    await promise.all(array.from(permissions.entries()).map(async ([collectionName, docs]) => {
+      const hasCollectionAccess = await authorization.hasWriteAccess(ydb, collectionName, '*', user)
+      if (hasCollectionAccess) {
+        docs.set('*', true)
+      } else {
+        await promise.all(array.from(docs.keys()).map(
+          docName => authorization.hasWriteAccess(ydb, collectionName, docName, user).then(hasWriteAccess => docs.set(docName, hasWriteAccess))
+        ))
+      }
+    }))
     // 1. Filter ops that have already been applied 2. apply ops 3. update clocks table
     await promise.all(filteredOps.map(async op => {
-      if (permissions.get(op.collection)?.get(op.doc)) {
+      const colperms = permissions.get(op.collection)
+      if (colperms?.get('*') || colperms?.get(op.doc)) {
         const localClock = await tr.tables.oplog.add(op)
         op.localClock = localClock.v
         clientClockEntries.set(encodeClocksKey(op.client, op.collection), new dbtypes.ClientClockValue(op.clock, op.localClock))
+        filteredOpsPermsChecked.push(op)
       } else {
         console.log('Not applying op because of missing permission', op, ydb.syncsEverything, user.hash, user.isTrusted)
         // @todo remove this
@@ -370,14 +382,14 @@ export const applyRemoteOps = (ydb, ops, user) => {
       const clocksKey = dbtypes.ClocksKey.decode(decoding.createDecoder(buffer.fromBase64(encClocksKey)))
       tr.tables.clocks.set(clocksKey, clockValue)
     })
-    emitOpsEvent(ydb, filteredOps)
   })
+  emitOpsEvent(ydb, filteredOpsPermsChecked)
   // @todo only apply doc ops to ydocs if sender has write permissions
   /**
    * @type {Map<string, Map<string, Array<dbtypes.OpValue>>>}
    */
   const sorted = new Map()
-  ops.forEach(op => {
+  filteredOpsPermsChecked.forEach(op => {
     map.setIfUndefined(map.setIfUndefined(sorted, op.collection, map.create), op.doc, () => /** @type {Array<dbtypes.OpValue>} */ ([])).push(op)
   })
   sorted.forEach((col, colname) => {
@@ -405,5 +417,4 @@ export const applyRemoteOps = (ydb, ops, user) => {
       })
     }
   })
-  return p
 }
