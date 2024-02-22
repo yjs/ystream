@@ -108,7 +108,7 @@ export const testPerformanceLoadingManyDocs = async tc => {
  * @param {t.TestCase} tc
  */
 export const testPerformanceSyncingManyDocs = async tc => {
-  const N = 1
+  const N = 1000
   const th = helpers.createTestScenario(tc)
   const server = th.server
   if (server === null) {

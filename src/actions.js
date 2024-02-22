@@ -342,7 +342,6 @@ export const applyRemoteOps = async (ydb, ops, user) => {
      */
     const clientClockEntries = new Map()
     const filteredOps = ops.filter(op => op.client !== ydb.clientid && op.clock > (clocks.get(encodeClocksKey(op.client, op.collection)) || -1))
-    console.log('applying ops: ', filteredOps)
     /**
      * @type {Map<string,Map<string,boolean>>}
      */
