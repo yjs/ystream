@@ -176,7 +176,12 @@ export const def = {
  * @param {string} dbname
  */
 export const createDb = dbname =>
-  isodb.openDB(dbname, def).then(idb =>
+  promise.all([
+    isodb.openDB(dbname, def),
+    ecdsa.generateKeyPair()
+      .then(({ publicKey, privateKey }) => ecdsa.exportKeyJwk(publicKey)
+        .then(publicKeyJwk => /** @type {[CryptoKey, CryptoKey, string]} */ ([publicKey, privateKey, json.stringify(publicKeyJwk)])))
+  ]).then(([idb, [publicDeviceKey, privateDeviceKey, publicDeviceKeyJwk]]) =>
     idb.transact(async tr => {
       const version = await tr.objects.db.get('version')
       let isAuthenticated = false
@@ -193,11 +198,10 @@ export const createDb = dbname =>
         tr.objects.db.set('version', 0)
         const dguid = new Uint8Array(64)
         webcrypto.getRandomValues(dguid)
-        const { publicKey: publicDeviceKey, privateKey: privateDeviceKey } = await ecdsa.generateKeyPair()
         await promise.all([
           tr.objects.device.set('private', privateDeviceKey),
           tr.objects.device.set('public', publicDeviceKey),
-          tr.objects.device.set('identity', new dbtypes.DeviceIdentity(json.stringify(await ecdsa.exportKeyJwk(publicDeviceKey))))
+          tr.objects.device.set('identity', new dbtypes.DeviceIdentity(publicDeviceKeyJwk))
         ])
       } else if ((deviceClaim = await tr.objects.device.get('claim'))) {
         isAuthenticated = true

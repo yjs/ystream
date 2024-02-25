@@ -9,20 +9,33 @@
     "type": "GitHub Sponsors ❤",
     "url": "https://github.com/sponsors/dmonad"
   },
+  "bin": {
+    "ystream-server": "./bin/server.js"
+  },
   "exports": {
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/src/index.d.ts",
       "default": "./src/index.js"
     },
+    "./comms/ws": {
+      "types": "./dist/src/comms/websocket.d.ts",
+      "default": "./src/comms/websocket.js"
+    },
     "./utils/websocket": {
+      "browser": "./src/utils/websocket.browser.js",
+      "bun": "./src/utils/websocket.node.js",
       "node": "./src/utils/websocket.node.js",
-      "types": "./dist/src/utils/websocket.browser.js",
-      "default": "./src/utils/websocket.browser.js"
+      "types": "./dist/src/utils/websocket.browser.d.ts",
+      "default": "./src/utils/websocket.node.js"
     },
     "./api/authentication": {
-      "types": "./dist/src/api/authentication.js",
+      "types": "./dist/src/api/authentication.d.ts",
       "default": "./src/api/authentication.js"
+    },
+    "./api/dbtypes": {
+      "types": "./dist/src/dbtypes.d.ts",
+      "default": "./src/dbtypes.js"
     }
   },
   "files": [
@@ -30,13 +43,14 @@
     "src"
   ],
   "scripts": {
+    "demo": "rollup -c && concurrently '0serve -o ./demo/index.html' 'rollup -wc' 'npm run ws-server'",
     "clean": "rm -rf dist .ydb-websocket-server .test_dbs",
     "types": "tsc",
     "gentesthtml": "npx 0gentesthtml --script ./tests/index.js > test.html",
     "debug:browser": "npm run gentesthtml && npx 0serve -o test.html",
     "debug:node": "LOG=* node --inspect-brk tests/index.js",
-    "ws-server": "LOG=* node ./src/comms/websocket-server.js",
-    "ws-server:inspect": "LOG=* node --inspect-brk ./src/comms/websocket-server.js",
+    "ws-server": "LOG=* node ./bin/server.js",
+    "ws-server:inspect": "LOG=* node --inspect-brk ./bin/server.js",
     "test": "LOG=* c8 --100 node tests/index.js",
     "test-coverage": "npm run lint && npm run dist && nyc --check-coverage --lines 100 --branches 100 --functions 100 --statements 100 node --unhandled-rejections=strict ./dist/test.cjs --repetition-time 50 --production",
     "test-inspect": "node --inspect-brk --unhandled-rejections=strict ./test.js --repetition-time 50 --production",
@@ -67,12 +81,21 @@
     "node": ">=20"
   },
   "devDependencies": {
+    "@codemirror/lang-javascript": "^6.2.2",
+    "@codemirror/lang-markdown": "^6.2.4",
+    "@codemirror/state": "^6.4.1",
+    "@codemirror/view": "^6.24.1",
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-node-resolve": "^15.2.3",
     "@types/node": "^18.11.9",
     "@types/ws": "^8.5.5",
     "c8": "^7.13.0",
-    "concurrently": "^7.5.0",
+    "codemirror": "^6.0.1",
+    "concurrently": "^7.6.0",
+    "rollup": "^4.12.0",
     "standard": "^17.0.0",
-    "typescript": "^5.1.6"
+    "typescript": "^5.1.6",
+    "y-codemirror.next": "^0.3.2"
   },
   "dependencies": {
     "isodb": "^0.1.6",
@@ -80,7 +103,7 @@
     "yjs": "^13.5.43"
   },
   "optionalDependencies": {
-    "ws": "^8.14.1",
-    "uws": "github:uNetworking/uWebSockets.js#v20.42.0"
+    "uws": "github:uNetworking/uWebSockets.js#v20.42.0",
+    "ws": "^8.14.1"
   }
 }

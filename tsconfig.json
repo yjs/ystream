@@ -2,7 +2,7 @@
   "compilerOptions": {
     /* Basic Options */
     "target": "es2022",
-    "module": "es2022",
+    "module": "NodeNext",
     "lib": ["es2022", "dom"],                             /* Specify library files to be included in the compilation. */
     "allowJs": true,                       /* Allow javascript files to be compiled. */
     "checkJs": true,                       /* Report errors in .js files. */
@@ -16,12 +16,13 @@
     "emitDeclarationOnly": true,
     "strict": true,
     "noImplicitAny": true,
-    "moduleResolution": "node",
+    "moduleResolution": "nodenext",
     "allowSyntheticDefaultImports": true,
     "paths": {
-      "ydb/utils/websocket": ["./src/utils/websocket.browser.js"]
+      "ydb": ["./src/index.js"],
+      "ydb/utils/websocket": ["./src/utils/websocket.node.js"]
     }
   },
-  "include": ["./src/**/*.js", "./tests/**/*.js"],
+  "include": ["./src/**/*.js", "./tests/**/*.js", "./demo/**/*.js", "./demo/*.js"],
   "exclude": ["./dist"]
 }

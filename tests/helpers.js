@@ -46,7 +46,7 @@ const testServerIdentity = {
 export let server = null
 
 if (env.isNode) {
-  const fs = await import('fs')
+  const fs = await import('node:fs')
   try {
     fs.rmSync('./.test_dbs', { recursive: true })
   } catch (e) {}

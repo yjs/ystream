@@ -136,16 +136,19 @@ export const registerDevice = (ydb, userHash, claim) =>
  * @param {Ydb} ydb
  * @param {string} jwt
  */
-export const useDeviceClaim = (ydb, jwt) =>
-  ydb.db.transact(async tr => {
-    let payload
-    const userPublicKey = await tr.objects.user.get('public')
-    if (userPublicKey != null) {
-      payload = await jose.verifyJwt(userPublicKey.key, jwt)
-    } else {
-      payload = jose.unsafeDecode(jwt)
-    }
-    const { payload: { sub, iss } } = payload
+export const useDeviceClaim = async (ydb, jwt) => {
+  /**
+   * @type {any}
+   */
+  let payload
+  const userPublicKey = await ydb.db.transact(tr => tr.objects.user.get('public'))
+  if (userPublicKey != null) {
+    payload = await jose.verifyJwt(userPublicKey.key, jwt)
+  } else {
+    payload = jose.unsafeDecode(jwt)
+  }
+  const { payload: { sub, iss } } = payload
+  await ydb.db.transact(async tr => {
     if (userPublicKey == null) {
       // ensure that the user identity is set using the public key of the jwt
       const user = new dbtypes.UserIdentity(iss)
@@ -161,6 +164,7 @@ export const useDeviceClaim = (ydb, jwt) =>
     ydb.isAuthenticated = true
     ydb.emit('authenticate', []) // should only be fired on deviceclaim
   })
+}
 
 /**
  * @param {Ydb} ydb
