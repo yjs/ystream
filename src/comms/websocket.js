@@ -26,7 +26,6 @@ const setupWS = comm => {
   if (comm.shouldConnect && comm.ws === null) {
     log(comm, 'setup')
     const websocket = new WS(comm.url)
-    comm.ws = websocket
     websocket.binaryType = 'arraybuffer'
     comm.ws = websocket
     comm.wsconnecting = true
@@ -136,7 +135,7 @@ class WebSocketCommInstance extends ObservableV2 {
      */
     this.deviceClaim = null
     /**
-     * @type {WS|null}
+     * @type {InstanceType<WS>|null}
      */
     this.ws = null
     this.shouldConnect = true
