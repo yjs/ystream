@@ -25,18 +25,22 @@ const testUserRaw = {
   user: 'AMgBeyJrZXlfb3BzIjpbInZlcmlmeSJdLCJleHQiOnRydWUsImt0eSI6IkVDIiwieCI6InBBVW1MWWMtVUZtUEl0N2xlYWZQVGJoeFF5eWdjYVc3X19uUGNVTkN1dTB3SDI3eVM5UF9wV0ZQMUd3Y3NvQU4iLCJ5IjoidTMxMDlLanJQR3NOVW4yazVXaG4ydUhMQWNrUVBkTE5xdE00R3BCRXBVSndsdlZEdms3MS1sUzNZT0VZSl9TcSIsImNydiI6IlAtMzg0In0='
 }
 
+const testServerUser = 'AMgBeyJrZXlfb3BzIjpbInZlcmlmeSJdLCJleHQiOnRydWUsImt0eSI6IkVDIiwieCI6IkNZd01ha3BuMG9uYU5lQ2Etd3FMbjRGenNyaXNfVVk0WjVnUlFVQTl4UU9vaDk0WUc5T0hoSXRyNnJvdmFZcFoiLCJ5IjoiNzRVbGp1ODZJVU1KWnNZc1NqeFNqdXNMamo5VTZyb3pad2JLOVhhcWozTWdJV3Ruak55akwxRC1Oek9QM0ZKNyIsImNydiI6IlAtMzg0In0='
+
 const testUser = {
   privateKey: await ecdsa.importKeyJwk(json.parse(testUserRaw.privateKey)),
   user: dbtypes.UserIdentity.decode(decoding.createDecoder(buffer.fromBase64(testUserRaw.user)))
 }
+const owner = buffer.toBase64(testUser.user.hash)
 
 const collection = 'my-notes-app'
-const y = await ydb.openYdb('wss://localhost:3000', [collection], {
+const y = await ydb.openYdb('wss://localhost:3000', [{ owner, collection }], {
   comms: [new wscomm.WebSocketComm('ws://localhost:9000')]
 })
+await authentication.registerUser(y, dbtypes.UserIdentity.decode(decoding.createDecoder(buffer.fromBase64(testServerUser))), { isTrusted: true })
 await authentication.setUserIdentity(y, testUser.user, await testUser.user.publicKey, testUser.privateKey)
 
-const yroot = y.getYdoc(collection, 'index')
+const yroot = y.getYdoc(owner, collection, 'index')
 const ynotes = yroot.getArray('notes')
 
 // add some css
@@ -108,9 +112,11 @@ const createNotes = n => {
   const notes = []
   for (let i = 0; i < n; i++) {
     const ynote = new Y.Map()
+    const ynoteContent = y.getYdoc(owner, collection, `#${ynotes.length + i}`)
+    ynoteContent.getText().insert(0, `# Note #${ynotes.length + i}\nsome initial content`)
     ynote.set('name', `Note #${ynotes.length + i}`)
-    ynote.set('content', new Y.Doc({ autoLoad: false }))
-    notes.push(ynote)
+    ynote.set('content', ynoteContent)
+    notes.unshift(ynote)
   }
   ynotes.insert(0, notes)
 }
@@ -119,10 +125,11 @@ const newNoteElement = dom.element('button', [], [dom.text('Create Note')])
 
 newNoteElement.addEventListener('click', () => createNotes(1))
 
-const new1000NotesElement = dom.element('button', [], [dom.text('Create 1000 Notes')])
-new1000NotesElement.addEventListener('click', () => createNotes(10))
+const new100NotesElement = dom.element('button', [], [dom.text('Create 100 Notes')])
+new100NotesElement.addEventListener('click', () => createNotes(100))
 
-const sidebar = dom.appendChild(document.body, dom.element('div', [pair.create('class', 'sidebar')], [
+// sidebar
+dom.appendChild(document.body, dom.element('div', [pair.create('class', 'sidebar')], [
   // user info
   dom.element('details', [], [
     dom.element('summary', [], [dom.text('User Details')]),
@@ -134,7 +141,7 @@ const sidebar = dom.appendChild(document.body, dom.element('div', [pair.create('
   dom.element('details', [pair.create('open', true)], [
     dom.element('summary', [], [dom.text('Notes')]),
     newNoteElement,
-    new1000NotesElement,
+    new100NotesElement,
     notesList
   ])
 ]))
@@ -184,7 +191,7 @@ const openDocumentInCodeMirror = (ydocname, yprops) => {
   currentEditorState?.unregisterHandlers()
   currentEditorState?.view.destroy()
   currentEditorState?.ydoc.destroy()
-  const ydoc = y.getYdoc(collection, ydocname)
+  const ydoc = y.getYdoc(owner, collection, ydocname)
   const ytext = ydoc.getText()
   const state = EditorState.create({
     doc: ytext.toString(),

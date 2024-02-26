@@ -3,6 +3,8 @@
  */
 
 import * as error from 'lib0/error'
+import * as utils from './utils.js'
+
 // @todo rename all interfacses to have I* prefix.
 
 /**
@@ -33,9 +35,9 @@ export class Comm {
   set deviceClaim (_u) { error.methodUnimplemented() }
   /**
    * Set of synced collections
-   * @type {Set<string>}
+   * @type {utils.CollectionsSet}
    */
-  get synced () { return new Set() }
+  get synced () { return new utils.CollectionsSet() }
   set synced (_v) { error.methodUnimplemented() }
   /**
    * Set of synced collections

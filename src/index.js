@@ -7,7 +7,7 @@ export const deleteYdb = isodb.deleteDB
 
 /**
  * @param {string} dbname
- * @param {Array<string>} collections
+ * @param {Array<{ owner: string, collection: string }>} collections
  * @param {import('./ydb.js').YdbConf} [conf]
  */
 export const openYdb = async (dbname, collections, conf) => {

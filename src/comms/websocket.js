@@ -1,4 +1,4 @@
-import { WebSocket } from 'ydb/utils/websocket'
+import { WebSocket as WS } from 'ydb/utils/websocket'
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import * as protocol from '../protocol.js'
@@ -9,6 +9,7 @@ import * as comm from '../comm.js' // eslint-disable-line
 import * as logging from 'lib0/logging'
 import { Ydb } from '../ydb.js' // eslint-disable-line
 import * as webcrypto from 'lib0/webcrypto'
+import * as utils from '../utils.js'
 
 const _log = logging.createModuleLogger('ydb/websocket')
 /**
@@ -24,15 +25,15 @@ const log = (comm, type, ...args) => _log(logging.PURPLE, `(local=${comm.ydb.cli
 const setupWS = comm => {
   if (comm.shouldConnect && comm.ws === null) {
     log(comm, 'setup')
-    const websocket = new WebSocket(comm.url)
+    const websocket = new WS(comm.url)
     comm.ws = websocket
     websocket.binaryType = 'arraybuffer'
     comm.ws = websocket
     comm.wsconnecting = true
     comm.wsconnected = false
-    comm.synced = new Set()
+    comm.synced.clear()
     websocket.onmessage = (event) => {
-      addReadMessage(comm, new Uint8Array(event.data))
+      addReadMessage(comm, new Uint8Array(/** @type {ArrayBuffer} */ (event.data)))
     }
     websocket.onerror = /** @param {any} event */ (event) => {
       log(comm, 'error', event)
@@ -44,14 +45,14 @@ const setupWS = comm => {
       comm.wsconnecting = false
       if (comm.wsconnected) {
         comm.wsconnected = false
-        comm.synced = new Set()
+        comm.synced.clear()
         comm.emit('status', [{
           status: 'disconnected'
         }, comm])
       } else {
         comm.wsUnsuccessfulReconnects++
       }
-      comm.emit('connection-close', [event, comm])
+      comm.emit('connection-close', [/** @type {any} */(event), comm])
       log(comm, 'close', 'close-code: ', event.code)
       // Start with no reconnect timeout and increase timeout by
       // using exponential backoff starting with 100ms
@@ -115,10 +116,7 @@ class WebSocketCommInstance extends ObservableV2 {
    */
   constructor (ydb, url) {
     super()
-    /**
-     * @type {Set<string>}
-     */
-    this.synced = new Set()
+    this.synced = new utils.CollectionsSet()
     this.isDestroyed = false
     this.comm = true
     this.ydb = ydb
@@ -138,7 +136,7 @@ class WebSocketCommInstance extends ObservableV2 {
      */
     this.deviceClaim = null
     /**
-     * @type {WebSocket|null}
+     * @type {WS|null}
      */
     this.ws = null
     this.shouldConnect = true

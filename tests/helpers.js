@@ -41,6 +41,18 @@ const testServerIdentity = {
 }
 
 /**
+ * @typedef {Object} TestClientOptions
+ * @property {Array<{ owner: string, collection: string }>} [TestClientOptions.collections]
+ */
+
+export const owner = testUser.user.hash
+export const collectionsDefiniton = [
+  { owner: buffer.toBase64(owner), collection: 'c1' },
+  { owner: buffer.toBase64(owner), collection: 'c2' },
+  { owner: buffer.toBase64(owner), collection: 'c3' }
+]
+
+/**
  * @type {import('../src/comms/websocket-server.js').WSServer|null}
  */
 export let server = null
@@ -54,11 +66,7 @@ if (env.isNode) {
   server = await createWSServer({ dbname: `.test_dbs/${randTestRunName}-server`, identity: testServerIdentity })
   await authentication.registerUser(server.ydb, testUser.user)
   // @todo add roles and default permissions to colletcions
-  await authorization.updateCollaborator(server.ydb, 'c1', 'ydoc', testUser.user, 'admin')
-  await authorization.updateCollaborator(server.ydb, 'c1', '*', testUser.user, 'admin')
-  await authorization.updateCollaborator(server.ydb, 'c2', 'ydoc', testUser.user, 'admin')
-  await authorization.updateCollaborator(server.ydb, 'c3', 'ydoc', testUser.user, 'admin')
-  await authorization.updateCollaborator(server.ydb, 'collection', 'ydoc', testUser.user, 'admin')
+  // await authorization.updateCollaborator(server.ydb, owner, 'c1', 'ydoc', testUser.user, 'admin')
   console.log('server registered user hashes: ', await authentication.getAllRegisteredUserHashes(server.ydb))
 }
 
@@ -75,14 +83,9 @@ class TestClient {
    */
   constructor (ydb) {
     this.ydb = ydb
-    this.doc1 = ydb.getYdoc('c1', 'ydoc')
+    this.doc1 = ydb.getYdoc(buffer.toBase64(testUser.user.hash), 'c1', 'ydoc')
   }
 }
-
-/**
- * @typedef {Object} TestClientOptions
- * @property {Array<string>} [TestClientOptions.collections]
- */
 
 class TestScenario {
   /**
@@ -101,7 +104,7 @@ class TestScenario {
   /**
    * @param {TestClientOptions} options
    */
-  async createClient ({ collections = ['c1', 'c2', 'c3'] } = {}) {
+  async createClient ({ collections = collectionsDefiniton } = {}) {
     const dbname = `.test_dbs/${randTestRunName}-${this.name}-${this.cliNum++}`
     await Ydb.deleteYdb(dbname)
     const ydb = await Ydb.openYdb(dbname, collections, {

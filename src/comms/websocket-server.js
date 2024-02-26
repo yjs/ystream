@@ -27,6 +27,7 @@ import * as error from 'lib0/error'
 import * as webcrypto from 'lib0/webcrypto'
 import * as authentication from '../api/authentication.js'
 import * as dbtypes from '../dbtypes.js' // eslint-disable-line
+import * as utils from '../utils.js'
 
 const expectedBufferedAmount = 512 * 1024 // 512kb
 
@@ -54,10 +55,7 @@ class WSClient {
     this.nextOps = []
     this._isDraining = false
     this.isDestroyed = false
-    /**
-     * @type {Set<string>}
-     */
-    this.synced = new Set()
+    this.synced = new utils.CollectionsSet()
     this.isAuthenticated = false
     this.challenge = webcrypto.getRandomValues(new Uint8Array(64))
   }
@@ -116,7 +114,7 @@ class WSClient {
  * @param {{ user: dbtypes.UserIdentity, privateKey: CryptoKey }} [options.identity]
  */
 export const createWSServer = async ({ port = 9000, dbname = '.ydb-websocket-server', acceptNewUsers = true, identity } = {}) => {
-  const db = await ydb.openYdb(dbname, ['*'], { acceptNewUsers })
+  const db = await ydb.openYdb(dbname, [], { acceptNewUsers, syncsEverything: true })
   const server = new WSServer(db, port)
   if (!db.isAuthenticated) {
     if (identity) {

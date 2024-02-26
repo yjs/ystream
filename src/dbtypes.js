@@ -16,6 +16,8 @@ import * as json from 'lib0/json'
 import * as ecdsa from 'lib0/crypto/ecdsa'
 
 /**
+ * @todo "owner" could be mapped to an integer
+ * @todo client should actually be a map to a deviceid
  * @template {operations.OpTypes} [OP=any]
  * @implements isodb.IEncodable
  */
@@ -23,14 +25,16 @@ export class OpValue {
   /**
    * @param {number} client
    * @param {number} clock
+   * @param {Uint8Array} owner hash of a user
    * @param {string} collection
    * @param {string} doc
    * @param {OP} op
    */
-  constructor (client, clock, collection, doc, op) {
+  constructor (client, clock, owner, collection, doc, op) {
     this.localClock = 0
     this.client = client
     this.clock = clock
+    this.owner = owner
     this.collection = collection
     this.doc = doc
     this.op = op
@@ -43,6 +47,7 @@ export class OpValue {
     encoding.writeUint8(encoder, this.op.type)
     encoding.writeVarUint(encoder, this.client)
     encoding.writeVarUint(encoder, this.clock)
+    encoding.writeVarUint8Array(encoder, this.owner)
     encoding.writeVarString(encoder, this.collection)
     encoding.writeVarString(encoder, this.doc)
     this.op.encode(encoder)
@@ -56,10 +61,11 @@ export class OpValue {
     const type = /** @type {operations.OpTypeIds} */ (decoding.readUint8(decoder))
     const clientFkey = decoding.readVarUint(decoder)
     const clientClockFkey = decoding.readVarUint(decoder)
+    const owner = decoding.readVarUint8Array(decoder)
     const collection = decoding.readVarString(decoder)
     const doc = decoding.readVarString(decoder)
     const op = operations.typeMap[type].decode(decoder)
-    return new OpValue(clientFkey, clientClockFkey, collection, doc, op)
+    return new OpValue(clientFkey, clientClockFkey, owner, collection, doc, op)
   }
 }
 
@@ -137,10 +143,12 @@ export class ClientClockValue {
  */
 export class CollectionKey {
   /**
+   * @param {Uint8Array} owner
    * @param {string} collection
    * @param {number} opid
    */
-  constructor (collection, opid) {
+  constructor (owner, collection, opid) {
+    this.owner = owner
     this.collection = collection
     this.opid = opid
   }
@@ -149,6 +157,7 @@ export class CollectionKey {
    * @param {encoding.Encoder} encoder
    */
   encode (encoder) {
+    encoding.writeVarUint8Array(encoder, this.owner)
     encoding.writeVarString(encoder, this.collection)
     encoding.writeUint32(encoder, this.opid)
   }
@@ -158,9 +167,10 @@ export class CollectionKey {
    * @return {isodb.IEncodable}
    */
   static decode (decoder) {
+    const owner = decoding.readVarUint8Array(decoder)
     const collection = decoding.readVarString(decoder)
     const opid = decoding.readUint32(decoder)
-    return new CollectionKey(collection, opid)
+    return new CollectionKey(owner, collection, opid)
   }
 }
 
@@ -312,16 +322,17 @@ export class DeviceClaim extends isodb.JwtValue {
 }
 
 /**
- * @todo remove doc parameter
  * @implements isodb.IEncodable
  */
 export class ClocksKey {
   /**
    * @param {number} clientid
+   * @param {Uint8Array?} owner
    * @param {string?} collection
    */
-  constructor (clientid, collection) {
+  constructor (clientid, owner, collection) {
     this.clientid = clientid
+    this.owner = owner
     this.collection = collection
   }
 
@@ -329,10 +340,13 @@ export class ClocksKey {
    * @param {encoding.Encoder} encoder
    */
   encode (encoder) {
-    const info = (this.collection ? 1 : 0)
+    const info = (this.owner ? 1 : 0) | (this.collection ? 2 : 0)
     encoding.writeUint8(encoder, info)
     encoding.writeUint32(encoder, this.clientid)
-    this.collection && encoding.writeVarString(encoder, this.collection)
+    if (this.owner) {
+      encoding.writeVarUint8Array(encoder, this.owner)
+      this.collection && encoding.writeVarString(encoder, this.collection)
+    }
   }
 
   /**
@@ -342,8 +356,9 @@ export class ClocksKey {
   static decode (decoder) {
     const info = decoding.readUint8(decoder)
     const clientid = decoding.readUint32(decoder)
-    const collection = (info & 1) > 0 ? decoding.readVarString(decoder) : null
-    return new ClocksKey(clientid, collection)
+    const owner = (info & 1) > 0 ? decoding.readVarUint8Array(decoder) : null
+    const collection = (info & 2) > 0 ? decoding.readVarString(decoder) : null
+    return new ClocksKey(clientid, owner, collection)
   }
 }
 
@@ -353,23 +368,26 @@ export class ClocksKey {
 export class DocKey {
   /**
    * @param {number} type
+   * @param {Uint8Array} owner
    * @param {string} collection
    * @param {string} doc
    * @param {number} opid
    */
-  constructor (type, collection, doc, opid) {
+  constructor (type, owner, collection, doc, opid) {
     this.type = type
+    this.owner = owner
     this.collection = collection
     this.doc = doc
     this.opid = opid
   }
 
   /**
-   * @param {{ type:number, collection:string, doc?:string }} prefix
+   * @param {{ type:number, owner: Uint8Array, collection:string, doc?:string }} prefix
    */
-  static prefix ({ type, collection, doc }) {
+  static prefix ({ type, owner, collection, doc }) {
     return encoding.encode(encoder => {
       encoding.writeUint16(encoder, type)
+      encoding.writeVarUint8Array(encoder, owner)
       encoding.writeVarString(encoder, collection)
       doc != null && encoding.writeVarString(encoder, doc)
     })
@@ -380,6 +398,7 @@ export class DocKey {
    */
   encode (encoder) {
     encoding.writeUint16(encoder, this.type)
+    encoding.writeVarUint8Array(encoder, this.owner)
     encoding.writeVarString(encoder, this.collection)
     encoding.writeVarString(encoder, this.doc)
     encoding.writeUint32(encoder, this.opid)
@@ -391,10 +410,11 @@ export class DocKey {
    */
   static decode (decoder) {
     const type = decoding.readUint16(decoder)
+    const owner = decoding.readVarUint8Array(decoder)
     const collection = decoding.readVarString(decoder)
     const doc = decoding.readVarString(decoder)
     const opid = decoding.readUint32(decoder)
-    return new DocKey(type, collection, doc, opid)
+    return new DocKey(type, owner, collection, doc, opid)
   }
 }
 
@@ -403,10 +423,12 @@ export class DocKey {
  */
 export class UnsyncedKey {
   /**
+   * @param {Uint8Array} owner
    * @param {string} collection
    * @param {string?} doc
    */
-  constructor (collection, doc) {
+  constructor (owner, collection, doc) {
+    this.owner = owner
     this.collection = collection
     this.doc = doc
   }
@@ -415,6 +437,7 @@ export class UnsyncedKey {
    * @param {encoding.Encoder} encoder
    */
   encode (encoder) {
+    encoding.writeVarUint8Array(encoder, this.owner)
     encoding.writeVarString(encoder, this.collection)
     if (this.doc != null) {
       // use empty string '' as start
@@ -431,20 +454,23 @@ export class UnsyncedKey {
    * @return {isodb.IEncodable}
    */
   static decode (decoder) {
+    const owner = decoding.readVarUint8Array(decoder)
     const collection = decoding.readVarString(decoder)
     const doc = decoding.readVarString(decoder)
-    return new this(collection, doc)
+    return new this(owner, collection, doc)
   }
 }
 
 // @todo this can be removed
 export class NoPermissionIndexKey {
   /**
+   * @param {Uint8Array} owner
    * @param {string} collection
    * @param {string} doc
    * @param {number} clock
    */
-  constructor (collection, doc, clock) {
+  constructor (owner, collection, doc, clock) {
+    this.owner = owner
     this.collection = collection
     this.doc = doc
     this.clock = clock
@@ -454,6 +480,7 @@ export class NoPermissionIndexKey {
    * @param {encoding.Encoder} encoder
    */
   encode (encoder) {
+    encoding.writeVarUint8Array(encoder, this.owner)
     encoding.writeVarString(encoder, this.collection)
     encoding.writeVarString(encoder, this.doc)
     encoding.writeUint32(encoder, this.clock)
@@ -464,9 +491,10 @@ export class NoPermissionIndexKey {
    * @return {isodb.IEncodable}
    */
   static decode (decoder) {
+    const owner = decoding.readVarUint8Array(decoder)
     const collection = decoding.readVarString(decoder)
     const doc = decoding.readVarString(decoder)
     const clock = decoding.readUint32(decoder)
-    return new NoPermissionIndexKey(collection, doc, clock)
+    return new NoPermissionIndexKey(owner, collection, doc, clock)
   }
 }

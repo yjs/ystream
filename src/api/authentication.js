@@ -20,6 +20,7 @@ import * as sha256 from 'lib0/hash/sha256'
  */
 export const setUserIdentity = async (ydb, userIdentity, publicKey, privateKey) =>
   ydb.db.transact(async tr => {
+    console.log(ydb.clientid, 'setting user identity', userIdentity.ekey)
     tr.objects.user.set('public', publicKey)
     privateKey && tr.objects.user.set('private', privateKey)
     tr.tables.users.add(userIdentity)

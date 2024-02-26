@@ -7,15 +7,16 @@ import * as db from './db.js' // eslint-disable-line
 import { ObservableV2 } from 'lib0/observable'
 import * as random from 'lib0/random'
 import * as actions from './actions.js'
-import * as array from 'lib0/array'
 import * as dbtypes from './dbtypes.js' // eslint-disable-line
 import * as eventloop from 'lib0/eventloop'
 import * as bc from 'lib0/broadcastchannel'
+import * as utils from './utils.js'
 
 /**
  * @typedef {Object} YdbConf
  * @property {Array<import('./comm.js').CommConfiguration>} [YdbConf.comms]
  * @property {boolean} [YdbConf.acceptNewUsers]
+ * @property {boolean} [YdbConf.syncsEverything]
  */
 
 /**
@@ -61,7 +62,7 @@ const _emitOpsEvent = (ydb, ops) => {
         opsToEmit = eops
         ydb._eops = []
       } else {
-        opsToEmit = eops.splice(0, i)
+        opsToEmit = eops.splice(0, i) // this also keeps the ops in ydb._eops
       }
       if (opsToEmit.length > 0) ydb.emit('ops', [opsToEmit, true])
       ydb._eev = null
@@ -85,14 +86,14 @@ export const emitOpsEvent = (ydb, ops) => {
  */
 export class Ydb extends ObservableV2 {
   /**
-   * @param {Array<string>} collections
+   * @param {Array<{ owner: string, collection: string }>} collections
    * @param {string} dbname
    * @param {isodb.IDB<typeof db.def>} _db
    * @param {dbtypes.UserIdentity|null} user
    * @param {dbtypes.DeviceClaim|null} deviceClaim
    * @param {YdbConf} conf
    */
-  constructor (collections, dbname, _db, user, deviceClaim, { comms = [], acceptNewUsers = false } = {}) {
+  constructor (collections, dbname, _db, user, deviceClaim, { comms = [], acceptNewUsers = false, syncsEverything = false } = {}) {
     super()
     this.dbname = dbname
     /**
@@ -104,17 +105,14 @@ export class Ydb extends ObservableV2 {
      *
      * @type {boolean}
      */
-    this.syncsEverything = array.some(collections, c => c === '*')
+    this.syncsEverything = syncsEverything
     this.acceptNewUsers = acceptNewUsers
     /**
-     * @type {Map<string,Map<string,Set<Y.Doc>>>}
+     * @type {Map<string,Map<string,Map<string,Set<Y.Doc>>>>}
      */
     this.collections = new Map()
-    collections.forEach(collectionName => { this.collections.set(collectionName, new Map()) })
-    /**
-     * @type {Set<string>}
-     */
-    this.syncedCollections = new Set()
+    collections.forEach(({ owner, collection }) => { map.setIfUndefined(this.collections, owner, map.create).set(collection, new Map()) })
+    this.syncedCollections = new utils.CollectionsSet()
     this.isSynced = false
     this.whenSynced = promise.create(resolve =>
       this.once('sync', resolve)
@@ -151,12 +149,6 @@ export class Ydb extends ObservableV2 {
      */
     this._eev = null
     /**
-     * Ops to emit once ops from the database are fetched.
-     *
-     * @type {Array<function(Array<dbtypes.OpValue>,boolean):void>}
-     */
-    this._els = []
-    /**
      * Subscribe to broadcastchannel event that is fired whenever an op is added to the database.
      */
     this._esub = bc.subscribe('ydb#' + this.dbname, /** @param {Array<number>} opids */ async (opids, origin) => {
@@ -178,27 +170,30 @@ export class Ydb extends ObservableV2 {
   }
 
   /**
+   * @param {string} owner
    * @param {string} collection
    * @param {string} docname
    */
-  getYdoc (collection, docname) {
+  getYdoc (owner, collection, docname) {
     const col = this.syncsEverything
-      ? map.setIfUndefined(this.collections, collection, map.create)
-      : this.collections.get(collection)
+      ? map.setIfUndefined(map.setIfUndefined(this.collections, owner, map.create), collection, map.create)
+      : this.collections.get(owner)?.get(collection)
     if (col == null) { throw new Error('Collection was not specified') }
     const docset = map.setIfUndefined(col, docname, () => new Set())
     const ydoc = new Y.Doc({
-      guid: `${collection}#${docname}`
+      guid: docname
     })
     docset.add(ydoc)
-    bindydoc(this, collection, docname, ydoc)
+    bindydoc(this, owner, collection, docname, ydoc)
     return ydoc
   }
 
   destroy () {
-    this.collections.forEach(collection => {
-      collection.forEach(docs => {
-        docs.forEach(doc => doc.destroy())
+    this.collections.forEach(owner => {
+      owner.forEach(collection => {
+        collection.forEach(docs => {
+          docs.forEach(doc => doc.destroy())
+        })
       })
     })
     this.comms.forEach(comm => comm.destroy())

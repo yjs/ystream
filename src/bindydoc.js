@@ -11,12 +11,14 @@ import * as operations from './operations.js'
 
 /**
  * @param {Ydb} ydb
+ * @param {string} owner
  * @param {string} collection
  * @param {string} doc
  * @param {Y.Doc} ydoc - should be an empty doc
  */
-export const bindydoc = async (ydb, collection, doc, ydoc) => {
-  const bcroom = `ydb#${ydb.dbname}#${collection}#${doc}`
+export const bindydoc = async (ydb, owner, collection, doc, ydoc) => {
+  const bcroom = `ydb#${ydb.dbname}#${owner}#${collection}#${doc}`
+  const ownerBin = buffer.fromBase64(owner)
   // const currentClock = ..
   ydoc.on('updateV2', /** @type {function(Uint8Array, any)} */ (update, origin) => {
     if (origin !== ydb) {
@@ -28,7 +30,7 @@ export const bindydoc = async (ydb, collection, doc, ydoc) => {
         // @todo iterate through opened documents in ydb and apply update
         // Thought: iterating through the docs should be the default
       }
-      actions.addOp(ydb, collection, doc, new operations.OpYjsUpdate(update))
+      actions.addOp(ydb, ownerBin, collection, doc, new operations.OpYjsUpdate(update))
     }
   })
   /* c8 ignore start */
@@ -43,8 +45,8 @@ export const bindydoc = async (ydb, collection, doc, ydoc) => {
     })
   }
   /* c8 ignore end */
-  const updates = await actions.getDocOps(ydb, collection, doc, operations.OpYjsUpdateType, 0) // currentClock
-  Y.transact(ydoc, () => {
+  const updates = await actions.getDocOps(ydb, ownerBin, collection, doc, operations.OpYjsUpdateType, 0) // currentClock
+  updates.length > 0 && Y.transact(ydoc, () => {
     updates.forEach(update => {
       if (update.op.type === operations.OpYjsUpdateType) {
         Y.applyUpdateV2(ydoc, update.op.update)

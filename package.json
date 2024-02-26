@@ -43,7 +43,7 @@
     "src"
   ],
   "scripts": {
-    "demo": "rollup -c && concurrently '0serve -o ./demo/index.html' 'rollup -wc' 'npm run ws-server'",
+    "demo": "npm run clean && rollup -c && concurrently '0serve -o ./demo/index.html' 'rollup -wc' 'npm run ws-server'",
     "clean": "rm -rf dist .ydb-websocket-server .test_dbs",
     "types": "tsc",
     "gentesthtml": "npx 0gentesthtml --script ./tests/index.js > test.html",

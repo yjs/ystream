@@ -6,21 +6,23 @@ import * as dbtypes from '../src/dbtypes.js'
 import { emptyUpdate, getDbName } from './helpers.js'
 import * as D from '../src/index.js'
 
+const testOwner = new Uint8Array([1, 2, 3])
+
 /**
  * @param {t.TestCase} tc
  */
 export const testBasic = async tc => {
   const ydb1 = await D.openYdb(getDbName(tc), [])
-  actions.addOp(ydb1, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
-  actions.addOp(ydb1, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
-  actions.addOp(ydb1, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
-  actions.addOp(ydb1, 'collection2', 'docname', new operations.OpYjsUpdate(emptyUpdate))
-  actions.addOp(ydb1, 'collection', 'docname2', new operations.OpYjsUpdate(emptyUpdate))
-  const docOps = await actions.getDocOps(ydb1, 'collection', 'docname', operations.OpYjsUpdateType, 0)
+  actions.addOp(ydb1, testOwner, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
+  actions.addOp(ydb1, testOwner, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
+  actions.addOp(ydb1, testOwner, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
+  actions.addOp(ydb1, testOwner, 'collection2', 'docname', new operations.OpYjsUpdate(emptyUpdate))
+  actions.addOp(ydb1, testOwner, 'collection', 'docname2', new operations.OpYjsUpdate(emptyUpdate))
+  const docOps = await actions.getDocOps(ydb1, testOwner, 'collection', 'docname', operations.OpYjsUpdateType, 0)
   t.assert(docOps.length === 3)
   const allOps = await actions.getOps(ydb1, 0)
   t.assert(allOps.length === 3) // because doc ops are merged
-  const collectionOps = await actions.getCollectionOps(ydb1, 'collection', 0)
+  const collectionOps = await actions.getCollectionOps(ydb1, testOwner, 'collection', 0)
   t.assert(collectionOps.length === 2)
 }
 
@@ -29,10 +31,10 @@ export const testBasic = async tc => {
  */
 export const testMergeOps = (_tc) => {
   const ops = [
-    new dbtypes.OpValue(0, 0, 'c1', 'd1', new operations.OpYjsUpdate(emptyUpdate)),
-    new dbtypes.OpValue(1, 3, 'c1', 'd1', new operations.OpYjsUpdate(emptyUpdate)),
-    new dbtypes.OpValue(0, 1, 'c1', 'd1', new operations.OpYjsUpdate(emptyUpdate)),
-    new dbtypes.OpValue(0, 2, 'c2', 'd1', new operations.OpYjsUpdate(emptyUpdate))
+    new dbtypes.OpValue(0, 0, testOwner, 'c1', 'd1', new operations.OpYjsUpdate(emptyUpdate)),
+    new dbtypes.OpValue(1, 3, testOwner, 'c1', 'd1', new operations.OpYjsUpdate(emptyUpdate)),
+    new dbtypes.OpValue(0, 1, testOwner, 'c1', 'd1', new operations.OpYjsUpdate(emptyUpdate)),
+    new dbtypes.OpValue(0, 2, testOwner, 'c2', 'd1', new operations.OpYjsUpdate(emptyUpdate))
   ]
   const merged = utils.mergeOps(ops, false)
   t.assert(merged.length === 2)

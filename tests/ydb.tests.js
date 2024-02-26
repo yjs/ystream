@@ -1,5 +1,6 @@
 import * as t from 'lib0/testing'
 import * as promise from 'lib0/promise'
+import * as buffer from 'lib0/buffer'
 
 import * as Ydb from '../src/index.js'
 import * as helpers from './helpers.js'
@@ -13,6 +14,10 @@ import * as authentication from '../src/api/authentication.js'
  */
 const getDbName = testname => '.test_dbs/' + testname
 
+const owner = buffer.toBase64(helpers.owner)
+const collection = 'c1'
+const collectionDef = { owner, collection }
+
 /**
  * Testing loading from the database.
  *
@@ -20,11 +25,11 @@ const getDbName = testname => '.test_dbs/' + testname
  */
 export const testYdocLoad = async tc => {
   await Ydb.deleteYdb(getDbName(tc.testName))
-  const ydb = await Ydb.openYdb(getDbName(tc.testName), ['collection'])
-  const ydoc1 = ydb.getYdoc('collection', 'ydoc')
+  const ydb = await Ydb.openYdb(getDbName(tc.testName), [collectionDef])
+  const ydoc1 = ydb.getYdoc(owner, collection, 'ydoc')
   await ydoc1.whenLoaded
   ydoc1.getMap().set('k', 'v')
-  const ydoc2 = ydb.getYdoc('collection', 'ydoc')
+  const ydoc2 = ydb.getYdoc(owner, collection, 'ydoc')
   await ydoc2.whenLoaded
   t.assert(ydoc2.getMap().get('k') === 'v')
   ydoc1.getMap().set('k', 'v2')
@@ -32,9 +37,9 @@ export const testYdocLoad = async tc => {
   console.log('before destroy')
   await ydb.destroy()
   console.log('after destroy')
-  const ydb2 = await Ydb.openYdb(getDbName(tc.testName), ['collection'])
+  const ydb2 = await Ydb.openYdb(getDbName(tc.testName), [collectionDef])
   console.log('after open')
-  const ydoc3 = ydb2.getYdoc('collection', 'ydoc')
+  const ydoc3 = ydb2.getYdoc(owner, collection, 'ydoc')
   console.log('after getdoc')
   await ydoc3.whenLoaded
   console.log('after loaded')
@@ -50,9 +55,9 @@ export const testComm = async tc => {
   console.log('ydb1 user hashes: ', await authentication.getAllRegisteredUserHashes(ydb1))
   console.log('ydb2 user hashes: ', await authentication.getAllRegisteredUserHashes(ydb2))
   await promise.all([ydb1.whenSynced, ydb2.whenSynced])
-  const ydoc1 = ydb1.getYdoc('c1', 'ydoc')
+  const ydoc1 = ydb1.getYdoc(owner, 'c1', 'ydoc')
   ydoc1.getMap().set('k', 'v1')
-  const ydoc2 = ydb2.getYdoc('c1', 'ydoc')
+  const ydoc2 = ydb2.getYdoc(owner, 'c1', 'ydoc')
   await ydoc2.whenLoaded
   await helpers.waitDocsSynced(ydoc1, ydoc2)
   t.compare(ydoc2.getMap().get('k'), 'v1')
@@ -62,7 +67,7 @@ export const testComm = async tc => {
   t.compare(ydoc2.getMap().get('k'), 'v2')
   const { ydb: ydb3 } = await th.createClient()
   await ydb3.whenSynced
-  const ydoc3 = ydb3.getYdoc('c1', 'ydoc')
+  const ydoc3 = ydb3.getYdoc(owner, 'c1', 'ydoc')
   await ydoc3.whenLoaded
   t.compare(ydoc3.getMap().get('k'), 'v2')
   // console.log(await actions.getClocks(ydb1), 'clientid: ', ydb1.clientid)
@@ -79,21 +84,21 @@ export const testComm = async tc => {
 export const testPerformanceLoadingManyDocs = async tc => {
   const N = 1000
   await Ydb.deleteYdb(getDbName(tc.testName))
-  const ydb = await Ydb.openYdb(getDbName(tc.testName), ['collection'])
+  const ydb = await Ydb.openYdb(getDbName(tc.testName), [collectionDef])
   await t.measureTimeAsync(`Create ${N} documents with initial content`, async () => {
     for (let i = 0; i < N; i++) {
-      const ydoc = ydb.getYdoc('collection', 'doc-' + i)
+      const ydoc = ydb.getYdoc(owner, collection, 'doc-' + i)
       ydoc.getMap().set('i', i)
     }
-    const lastdoc = ydb.getYdoc('collection', 'doc-' + (N - 1))
+    const lastdoc = ydb.getYdoc(owner, collection, 'doc-' + (N - 1))
     await lastdoc.whenLoaded
     t.assert(lastdoc.getMap().get('i') === N - 1)
   })
-  const ydb2 = await Ydb.openYdb(getDbName(tc.testName), ['collection'])
+  const ydb2 = await Ydb.openYdb(getDbName(tc.testName), [collectionDef])
   await t.measureTimeAsync(`Loading ${N} documents with initial content`, async () => {
     const ps = []
     for (let i = 0; i < N; i++) {
-      const ydoc = ydb2.getYdoc('collection', 'doc-' + i)
+      const ydoc = ydb2.getYdoc(owner, collection, 'doc-' + i)
       ps.push(ydoc.whenLoaded.then(() => {
         if (ydoc.getMap().get('i') !== i) {
           return promise.reject(error.create(`content on doc ${i} not properly loaded`))
@@ -117,20 +122,20 @@ export const testPerformanceSyncingManyDocs = async tc => {
   const [{ ydb: ydb1 }] = await th.createClients(1)
   await t.measureTimeAsync(`Sync ${N} documents with content to server`, async () => {
     for (let i = 0; i < N; i++) {
-      const ydoc = ydb1.getYdoc('c1', 'doc-' + i)
+      const ydoc = ydb1.getYdoc(owner, 'c1', 'doc-' + i)
       ydoc.getMap().set('i', i)
     }
-    const lastClientDoc = ydb1.getYdoc('c1', 'doc-' + (N - 1))
+    const lastClientDoc = ydb1.getYdoc(owner, 'c1', 'doc-' + (N - 1))
     await lastClientDoc.whenLoaded
-    const lastServerDoc = server.ydb.getYdoc('c1', 'doc-' + (N - 1))
+    const lastServerDoc = server.ydb.getYdoc(owner, 'c1', 'doc-' + (N - 1))
     await lastServerDoc.whenLoaded
     await helpers.waitDocsSynced(lastClientDoc, lastServerDoc)
     t.assert(lastServerDoc.getMap().get('i') === N - 1)
   })
   const [{ ydb: ydb2 }] = await th.createClients(1)
   await t.measureTimeAsync(`Sync ${N} documents with content from server`, async () => {
-    const lastClientDoc = ydb2.getYdoc('c1', 'doc-' + (N - 1))
-    const lastServerDoc = server.ydb.getYdoc('c1', 'doc-' + (N - 1))
+    const lastClientDoc = ydb2.getYdoc(owner, 'c1', 'doc-' + (N - 1))
+    const lastServerDoc = server.ydb.getYdoc(owner, 'c1', 'doc-' + (N - 1))
     await lastServerDoc.whenLoaded
     await helpers.waitDocsSynced(lastClientDoc, lastServerDoc)
     t.assert(lastClientDoc.getMap().get('i') === N - 1)

@@ -2,21 +2,20 @@
   "compilerOptions": {
     /* Basic Options */
     "target": "es2022",
-    "module": "NodeNext",
+    "module": "es2022",
     "lib": ["es2022", "dom"],                             /* Specify library files to be included in the compilation. */
     "allowJs": true,                       /* Allow javascript files to be compiled. */
     "checkJs": true,                       /* Report errors in .js files. */
     // "jsx": "preserve",                     /* Specify JSX code generation: 'preserve', 'react-native', or 'react'. */
     "declaration": true,                   /* Generates corresponding '.d.ts' file. */
     "declarationMap": true,                /* Generates a sourcemap for each corresponding '.d.ts' file. */
-    // "outFile": "./index.js",                       /* Concatenate and emit output to single file. */
     "outDir": "dist", // this is overritten by `npm run types`
     "baseUrl": "./",                       /* Base directory to resolve non-absolute module names. */
-    // "rootDir": "./",                       /* Specify the root directory of input files. Use to control the output directory structure with --outDir. */
+    "rootDir": "./",
     "emitDeclarationOnly": true,
     "strict": true,
     "noImplicitAny": true,
-    "moduleResolution": "nodenext",
+    "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "paths": {
       "ydb": ["./src/index.js"],
@@ -24,5 +23,5 @@
     }
   },
   "include": ["./src/**/*.js", "./tests/**/*.js", "./demo/**/*.js", "./demo/*.js"],
-  "exclude": ["./dist"]
+  "exclude": ["./dist", "./node_modules"]
 }

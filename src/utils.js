@@ -3,6 +3,7 @@ import * as Y from 'yjs'
 import * as dbtypes from './dbtypes.js' // eslint-disable-line
 import * as operations from './operations.js'
 import * as array from 'lib0/array'
+import * as buffer from 'lib0/buffer'
 
 /**
  * Merges ops on the same collection & doc
@@ -69,3 +70,36 @@ export const filterYjsUpdateOps = ops =>
  */
 export const mergeYjsUpdateOps = ops =>
   Y.mergeUpdatesV2(filterYjsUpdateOps(ops).map(op => op.op.update))
+
+/**
+ * Registry for adding owner/collection pairs and checking whether they have been added.
+ */
+export class CollectionsSet {
+  constructor () {
+    /**
+     * @type {Map<string,Set<string>>}
+     */
+    this.owners = new Map()
+  }
+
+  clear () {
+    this.owners.clear()
+  }
+
+  /**
+   * @param {Uint8Array} owner
+   * @param {string} collection
+   */
+  add (owner, collection) {
+    map.setIfUndefined(this.owners, buffer.toBase64(owner), () => new Set()).add(collection)
+  }
+
+  /**
+   * @param {string} owner
+   * @param {string} collection
+   * @return {boolean}
+   */
+  has (owner, collection) {
+    return this.owners.get(owner)?.has(collection) === true
+  }
+}

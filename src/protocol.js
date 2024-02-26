@@ -26,8 +26,9 @@ const log = (ydb, comm, type, ...args) => _log(logging.PURPLE, `(local=${ydb.cli
 const messageOps = 0
 const messageRequestOps = 1
 const messageSynced = 2
-const messageInfo = 3 // first message
-const messageChallengeAnswer = 4 // second message
+const messageSyncedAll = 3
+const messageInfo = 4 // first message
+const messageChallengeAnswer = 5 // second message
 
 /**
  * @param {encoding.Encoder} encoder
@@ -65,12 +66,23 @@ const readOps = (decoder, ydb, comm) => {
 
 /**
  * @param {encoding.Encoder} encoder
+ * @param {Uint8Array} owner
  * @param {string} collection
  * @param {number} nextClock
  */
-export const writeSynced = (encoder, collection, nextClock) => {
+export const writeSynced = (encoder, owner, collection, nextClock) => {
   encoding.writeUint8(encoder, messageSynced)
+  encoding.writeVarUint8Array(encoder, owner)
   encoding.writeVarString(encoder, collection)
+  encoding.writeVarUint(encoder, nextClock)
+}
+
+/**
+ * @param {encoding.Encoder} encoder
+ * @param {number} nextClock
+ */
+export const writeSyncedAll = (encoder, nextClock) => {
+  encoding.writeUint8(encoder, messageSyncedAll)
   encoding.writeVarUint(encoder, nextClock)
 }
 
@@ -81,13 +93,14 @@ export const writeSynced = (encoder, collection, nextClock) => {
  * @param {import('./comm.js').Comm|null} comm
  */
 const readSynced = async (_encoder, decoder, ydb, comm) => {
-  const collection = decoding.readVarString(decoder) // collection
+  const owner = decoding.readVarUint8Array(decoder)
+  const collection = decoding.readVarString(decoder)
   decoding.readVarUint(decoder) // confirmed clock
   if (comm == null) return
-  comm.synced.add(collection)
-  ydb.syncedCollections.add(collection)
+  comm.synced.add(owner, collection)
+  ydb.syncedCollections.add(owner, collection)
   if (ydb.isSynced) return
-  if (collection === '*' || array.from(ydb.collections.keys()).every(cname => ydb.syncedCollections.has(cname))) {
+  if (array.from(ydb.collections.entries()).every(([owner, cols]) => array.from(cols.keys()).every(cname => ydb.syncedCollections.has(owner, cname)))) {
     ydb.isSynced = true
     log(ydb, comm, 'Synced', `synced "${collection}" .. emitted sync event`)
     ydb.emit('sync', [])
@@ -97,33 +110,63 @@ const readSynced = async (_encoder, decoder, ydb, comm) => {
 }
 
 /**
+ * @param {encoding.Encoder} _encoder
+ * @param {decoding.Decoder} decoder
+ * @param {Ydb} ydb
+ * @param {import('./comm.js').Comm|null} comm
+ */
+const readSyncedAll = async (_encoder, decoder, ydb, comm) => {
+  decoding.readVarUint(decoder) // confirmed clock
+  if (comm == null) return
+  if (ydb.isSynced) return
+  ydb.isSynced = true
+  log(ydb, comm, 'Synced', 'synced "*" collections .. emitted sync event')
+  ydb.emit('sync', [])
+}
+
+/**
  * @param {encoding.Encoder} encoder
- * @param {string} collection Use "*" to request all collections
+ * @param {Uint8Array} owner
+ * @param {string} collection
  * @param {number} clock
  */
-export const writeRequestOps = (encoder, collection, clock) => {
+export const writeRequestOps = (encoder, owner, collection, clock) => {
   encoding.writeUint8(encoder, messageRequestOps)
+  encoding.writeUint8(encoder, 1) // requesting specific ops
+  encoding.writeVarUint8Array(encoder, owner)
   encoding.writeVarString(encoder, collection)
+  encoding.writeVarUint(encoder, clock)
+}
+
+/**
+ * @param {encoding.Encoder} encoder
+ * @param {number} clock
+ */
+export const writeRequestAllOps = (encoder, clock) => {
+  encoding.writeUint8(encoder, messageRequestOps)
+  encoding.writeUint8(encoder, 0) // request all ops
   encoding.writeVarUint(encoder, clock)
 }
 
 /**
  * @param {Ydb} ydb
  * @param {import('./comm.js').Comm} comm - this is used to subscribe to messages
- * @param {string} collection
+ * @param {Uint8Array?} owner
+ * @param {string?} collection
  * @param {number} nextExpectedClock
  */
-const _subscribeConnToOps = (ydb, comm, collection, nextExpectedClock) => {
+const _subscribeConnToOps = (ydb, comm, owner, collection, nextExpectedClock) => {
   /**
    * @param {Array<dbtypes.OpValue>} ops
    * @param {boolean} _isSynced
    */
   const opsConsumer = (ops, _isSynced) => {
     if (comm.isDestroyed) {
+      console.log(ydb.clientid, 'unsubscribes conn from ops', { fid: comm.clientid })
       ydb.off('ops', opsConsumer)
       return
     }
-    if (collection !== '*') ops = ops.filter(op => op.collection === collection)
+    if (collection != null && owner != null) ops = ops.filter(op => op.collection === collection && array.equalFlat(op.owner, owner))
     if (ops.length > 0) {
       comm.send(encoding.encode(encoder =>
         writeOps(encoder, ops)
@@ -140,16 +183,33 @@ const _subscribeConnToOps = (ydb, comm, collection, nextExpectedClock) => {
  * @param {import('./comm.js').Comm} comm - this is used to subscribe to messages
  */
 const readRequestOps = async (encoder, decoder, ydb, comm) => {
-  const collection = decoding.readVarString(decoder)
-  const clock = decoding.readVarUint(decoder)
-  const ops = await (collection === '*' ? actions.getOps(ydb, clock) : actions.getCollectionOps(ydb, collection, clock))
-  log(ydb, comm, 'RequestOps', `requested "${collection}"`)
+  const requestedAllOps = decoding.readUint8(decoder) === 0
+  let ops
+  let owner = null
+  let collection = null
+  if (requestedAllOps) {
+    const clock = decoding.readVarUint(decoder)
+    ops = await actions.getOps(ydb, clock)
+    log(ydb, comm, 'RequestOps', 'requested all ops')
+  } else {
+    // requested only a single collection
+    owner = decoding.readVarUint8Array(decoder)
+    collection = decoding.readVarString(decoder)
+    const clock = decoding.readVarUint(decoder)
+    ops = await actions.getCollectionOps(ydb, owner, collection, clock)
+    log(ydb, comm, 'RequestOps', `requested "${collection}"`)
+  }
   const nextExpectedClock = ops.length > 0 ? ops[ops.length - 1].clock : 0
   ops.length > 0 && writeOps(encoder, ops)
-  writeSynced(encoder, collection, nextExpectedClock)
+  if (owner != null && collection != null) {
+    writeSynced(encoder, owner, collection, nextExpectedClock)
+  } else {
+    writeSyncedAll(encoder, nextExpectedClock)
+  }
+  console.log(ydb.clientid, 'subscribing conn to ops', { fcid: comm.clientid })
   // this needs to be handled by a separate function, so the observer doesn't keep the above
   // variables in scope
-  _subscribeConnToOps(ydb, comm, collection, nextExpectedClock)
+  _subscribeConnToOps(ydb, comm, owner, collection, nextExpectedClock)
 }
 
 /**
@@ -237,16 +297,19 @@ const readChallengeAnswer = async (encoder, decoder, ydb, comm) => {
   comm.isAuthenticated = true
   // @todo now send requestOps
   if (ydb.syncsEverything) {
-    const clock = await actions.getClock(ydb, comm.clientid, null)
-    writeRequestOps(encoder, '*', clock)
+    const clock = await actions.getClock(ydb, comm.clientid, null, null)
+    writeRequestAllOps(encoder, clock)
   } else {
     await ydb.db.transact(() =>
-      promise.all(map.map(ydb.collections, (_, collectionname) =>
-        actions.getClock(ydb, comm.clientid, collectionname).then(clock => {
-          writeRequestOps(encoder, collectionname, clock)
-          return clock
-        })
-      ))
+      promise.all(map.map(ydb.collections, (cols, _owner) => {
+        const owner = buffer.fromBase64(_owner)
+        return promise.all(map.map(cols, (_, collection) =>
+          actions.getClock(ydb, comm.clientid, owner, collection).then(clock => {
+            writeRequestOps(encoder, owner, collection, clock)
+            return clock
+          })
+        ))
+      }))
     )
   }
 }
@@ -299,6 +362,10 @@ export const readMessage = async (encoder, decoder, ydb, comm) => {
           }
           case messageSynced: {
             await readSynced(encoder, decoder, ydb, comm)
+            break
+          }
+          case messageSyncedAll: {
+            await readSyncedAll(encoder, decoder, ydb, comm)
             break
           }
           /* c8 ignore next 3 */

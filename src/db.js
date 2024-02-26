@@ -28,7 +28,7 @@ export const def = {
            * @param {isodb.AutoKey} k
            * @param {dbtypes.OpValue} v
            */
-          mapper: (k, v) => new dbtypes.DocKey(v.op.type, v.collection, v.doc, k.v),
+          mapper: (k, v) => new dbtypes.DocKey(v.op.type, v.owner, v.collection, v.doc, k.v),
           key: dbtypes.DocKey
         },
         collection: {
@@ -36,7 +36,7 @@ export const def = {
            * @param {isodb.AutoKey} k
            * @param {dbtypes.OpValue} v
            */
-          mapper: (k, v) => new dbtypes.CollectionKey(v.collection, k.v),
+          mapper: (k, v) => new dbtypes.CollectionKey(v.owner, v.collection, k.v),
           key: dbtypes.CollectionKey
         }
       }
