@@ -1,4 +1,4 @@
-import { WebSocket as WS } from 'ydb/utils/websocket'
+import { WebSocket as WS } from '@y/stream/utils/websocket'
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import * as protocol from '../protocol.js'
@@ -11,7 +11,7 @@ import { Ydb } from '../ydb.js' // eslint-disable-line
 import * as webcrypto from 'lib0/webcrypto'
 import * as utils from '../utils.js'
 
-const _log = logging.createModuleLogger('ydb/websocket')
+const _log = logging.createModuleLogger('@y/stream/websocket')
 /**
  * @param {WebSocketCommInstance} comm
  * @param {string} type

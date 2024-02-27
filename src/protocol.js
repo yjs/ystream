@@ -14,7 +14,7 @@ import * as jose from 'lib0/crypto/jwt'
 import * as sha256 from 'lib0/hash/sha256'
 import * as string from 'lib0/string'
 
-const _log = logging.createModuleLogger('ydb/protocol')
+const _log = logging.createModuleLogger('@y/stream/protocol')
 /**
  * @param {Ydb} ydb
  * @param {import('./comm.js').Comm} comm

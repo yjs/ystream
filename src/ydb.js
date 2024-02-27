@@ -77,7 +77,7 @@ const _emitOpsEvent = (ydb, ops) => {
 export const emitOpsEvent = (ydb, ops) => {
   if (ops.length > 0) {
     _emitOpsEvent(ydb, ops)
-    bc.publish('ydb#' + ydb.dbname, ops.map(op => op.localClock), ydb)
+    bc.publish('@y/stream#' + ydb.dbname, ops.map(op => op.localClock), ydb)
   }
 }
 
@@ -151,7 +151,7 @@ export class Ydb extends ObservableV2 {
     /**
      * Subscribe to broadcastchannel event that is fired whenever an op is added to the database.
      */
-    this._esub = bc.subscribe('ydb#' + this.dbname, /** @param {Array<number>} opids */ async (opids, origin) => {
+    this._esub = bc.subscribe('@y/stream#' + this.dbname, /** @param {Array<number>} opids */ async (opids, origin) => {
       if (origin !== this) {
         const ops = await actions.getOps(this, opids[0])
         _emitOpsEvent(this, ops)
@@ -198,7 +198,7 @@ export class Ydb extends ObservableV2 {
     })
     this.comms.forEach(comm => comm.destroy())
     this._eev?.destroy()
-    bc.unsubscribe('ydb#' + this.dbname, this._esub)
+    bc.unsubscribe('@y/stream#' + this.dbname, this._esub)
     return this.db.destroy()
   }
 }

@@ -52,8 +52,8 @@ export const testYdocLoad = async tc => {
 export const testComm = async tc => {
   const th = helpers.createTestScenario(tc)
   const [{ ydb: ydb1 }, { ydb: ydb2 }] = await th.createClients(2)
-  console.log('ydb1 user hashes: ', await authentication.getAllRegisteredUserHashes(ydb1))
-  console.log('ydb2 user hashes: ', await authentication.getAllRegisteredUserHashes(ydb2))
+  console.log('@y/stream1 user hashes: ', await authentication.getAllRegisteredUserHashes(ydb1))
+  console.log('@y/stream2 user hashes: ', await authentication.getAllRegisteredUserHashes(ydb2))
   await promise.all([ydb1.whenSynced, ydb2.whenSynced])
   const ydoc1 = ydb1.getYdoc(owner, 'c1', 'ydoc')
   ydoc1.getMap().set('k', 'v1')

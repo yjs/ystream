@@ -1,8 +1,8 @@
 /* eslint-env browser */
-import * as ydb from 'ydb'
-import * as wscomm from 'ydb/comms/ws'
-import * as authentication from 'ydb/api/authentication'
-import * as dbtypes from 'ydb/api/dbtypes'
+import * as ydb from '@y/stream'
+import * as wscomm from '@y/stream/comms/ws'
+import * as authentication from '@y/stream/api/authentication'
+import * as dbtypes from '@y/stream/api/dbtypes'
 import * as Y from 'yjs'
 import * as dom from 'lib0/dom'
 import * as buffer from 'lib0/buffer'

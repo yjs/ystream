@@ -18,11 +18,11 @@
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "paths": {
-      "ydb": ["./src/index.js"],
-      "ydb/utils/websocket": ["./src/utils/websocket.browser.js"],
-      "ydb/api/authentication": ["./src/api/authentication.js"],
-      "ydb/comms/ws": ["./src/comms/websocket.js"],
-      "ydb/api/dbtypes": ["./src/dbtypes.js"]
+      "@y/stream": ["./src/index.js"],
+      "@y/stream/utils/websocket": ["./src/utils/websocket.browser.js"],
+      "@y/stream/api/authentication": ["./src/api/authentication.js"],
+      "@y/stream/comms/ws": ["./src/comms/websocket.js"],
+      "@y/stream/api/dbtypes": ["./src/dbtypes.js"]
     }
   },
   "include": ["./src/**/*.js", "./tests/**/*.js", "./demo/**/*.js", "./demo/*.js"],
