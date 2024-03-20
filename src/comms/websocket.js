@@ -17,7 +17,7 @@ const _log = logging.createModuleLogger('@y/stream/websocket')
  * @param {string} type
  * @param {...any} args
  */
-const log = (comm, type, ...args) => _log(logging.PURPLE, `(local=${comm.ydb.clientid.toString(36).slice(0, 4)},remote=${comm.clientid.toString(36).slice(0, 4)}) `, logging.ORANGE, '[' + type + '] ', logging.GREY, ...args)
+const log = (comm, type, ...args) => _log(logging.PURPLE, `(local=${comm.ydb.clientid.toString(36).slice(0, 4)},remote=${comm.clientid.toString(36).slice(0, 4)}) `, logging.ORANGE, '[' + type + '] ', logging.GREY, ...args.map(arg => typeof arg === 'function' ? arg() : arg))
 
 /**
  * @param {WebSocketCommInstance} comm

@@ -21,7 +21,7 @@ const _log = logging.createModuleLogger('@y/stream/protocol')
  * @param {string} type
  * @param {...any} args
  */
-const log = (ydb, comm, type, ...args) => _log(logging.PURPLE, `(local=${ydb.clientid.toString(36).slice(0, 4)},remote=${comm.clientid.toString(36).slice(0, 4)}${ydb.syncsEverything ? ',server=true' : ''}) `, logging.ORANGE, '[' + type + '] ', logging.GREY, ...args)
+const log = (ydb, comm, type, ...args) => _log(logging.PURPLE, `(local=${ydb.clientid.toString(36).slice(0, 4)},remote=${comm.clientid.toString(36).slice(0, 4)}${ydb.syncsEverything ? ',server=true' : ''}) `, logging.ORANGE, '[' + type + '] ', logging.GREY, ...args.map(arg => typeof arg === 'function' ? arg() : arg))
 
 const messageOps = 0
 const messageRequestOps = 1
@@ -274,7 +274,7 @@ const readInfo = async (encoder, decoder, ydb, comm) => {
     }
   })
   // @todo send some kind of challenge
-  log(ydb, comm, 'Info', challenge)
+  log(ydb, comm, 'Info Challenge', () => Array.from(challenge))
   await writeChallengeAnswer(encoder, ydb, challenge)
 }
 
