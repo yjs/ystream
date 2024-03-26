@@ -281,7 +281,7 @@ export class OpYjsUpdate {
     let update
     // @todo if ops.length === 1 return ops[0]
     if (gc) {
-      const ydoc = new Y.Doc()
+      const ydoc = new Y.Doc({ guid: '' })
       ydoc.transact(() => {
         for (let i = 0; i < ops.length; i++) {
           Y.applyUpdateV2(ydoc, ops[i].op.update)
