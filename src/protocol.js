@@ -149,34 +149,6 @@ export const writeRequestAllOps = (encoder, clock) => {
 }
 
 /**
- * @param {Ydb} ydb
- * @param {import('./comm.js').Comm} comm - this is used to subscribe to messages
- * @param {Uint8Array?} owner
- * @param {string?} collection
- * @param {number} nextExpectedClock
- */
-const _subscribeConnToOps = (ydb, comm, owner, collection, nextExpectedClock) => {
-  /**
-   * @param {Array<dbtypes.OpValue>} ops
-   * @param {boolean} _isSynced
-   */
-  const opsConsumer = (ops, _isSynced) => {
-    if (comm.isDestroyed) {
-      console.log(ydb.clientid, 'unsubscribes conn from ops', { fid: comm.clientid })
-      ydb.off('ops', opsConsumer)
-      return
-    }
-    if (collection != null && owner != null) ops = ops.filter(op => op.collection === collection && array.equalFlat(op.owner, owner))
-    if (ops.length > 0) {
-      comm.send(encoding.encode(encoder =>
-        writeOps(encoder, ops)
-      ))
-    }
-  }
-  actions.consumeOps(ydb, nextExpectedClock, opsConsumer)
-}
-
-/**
  * @param {encoding.Encoder} encoder
  * @param {decoding.Decoder} decoder
  * @param {Ydb} ydb
@@ -184,32 +156,25 @@ const _subscribeConnToOps = (ydb, comm, owner, collection, nextExpectedClock) =>
  */
 const readRequestOps = async (encoder, decoder, ydb, comm) => {
   const requestedAllOps = decoding.readUint8(decoder) === 0
-  let ops
   let owner = null
   let collection = null
+  let nextClock = 0
   if (requestedAllOps) {
-    const clock = decoding.readVarUint(decoder)
-    ops = await actions.getOps(ydb, clock)
+    nextClock = decoding.readVarUint(decoder)
     log(ydb, comm, 'RequestOps', 'requested all ops')
   } else {
     // requested only a single collection
     owner = decoding.readVarUint8Array(decoder)
     collection = decoding.readVarString(decoder)
-    const clock = decoding.readVarUint(decoder)
-    ops = await actions.getCollectionOps(ydb, owner, collection, clock)
+    nextClock = decoding.readVarUint(decoder)
     log(ydb, comm, 'RequestOps', `requested "${collection}"`)
   }
-  const nextExpectedClock = ops.length > 0 ? ops[ops.length - 1].clock : 0
-  ops.length > 0 && writeOps(encoder, ops)
-  if (owner != null && collection != null) {
-    writeSynced(encoder, owner, collection, nextExpectedClock)
-  } else {
-    writeSyncedAll(encoder, nextExpectedClock)
-  }
-  console.log(ydb.clientid, 'subscribing conn to ops', { fcid: comm.clientid })
-  // this needs to be handled by a separate function, so the observer doesn't keep the above
-  // variables in scope
-  _subscribeConnToOps(ydb, comm, owner, collection, nextExpectedClock)
+  console.log(ydb.clientid, 'subscribing conn to ops', { fcid: comm.clientid, collection, owner })
+  // @todo add method to filter by owner & collection
+  actions.createOpsReader(ydb, nextClock, owner, collection).pipeTo(comm.writer, { signal: comm.streamController.signal }).catch((reason) => {
+    console.log('ended pipe', { reason, isDestroyed: comm.isDestroyed })
+    // if (reason !== 'destroyed') debugger
+  })
 }
 
 /**

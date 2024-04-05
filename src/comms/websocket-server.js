@@ -58,6 +58,30 @@ class WSClient {
     this.synced = new utils.CollectionsSet()
     this.isAuthenticated = false
     this.challenge = webcrypto.getRandomValues(new Uint8Array(64))
+    this.streamController = new AbortController()
+    /**
+     * @type {WritableStream<Array<dbtypes.OpValue|Uint8Array>>}
+     */
+    this.writer = new WritableStream({
+      write: (message) => {
+        if (this.isDestroyed) return
+        const encodedMessage = encoding.encode(encoder => {
+          for (let i = 0; i < message.length; i++) {
+            const m = message[i]
+            if (m instanceof Uint8Array) {
+              encoding.writeUint8Array(encoder, m)
+            } else {
+              protocol.writeOps(encoder, /** @type {Array<dbtypes.OpValue>} */ (message))
+            }
+          }
+        })
+        this.send(encodedMessage)
+        const maxBufferedAmount = 3000_000
+        if (this.ws.getBufferedAmount() > maxBufferedAmount) {
+          return promise.until(100, () => this.isDestroyed || this.ws.getBufferedAmount() < maxBufferedAmount)
+        }
+      }
+    })
   }
 
   /**
@@ -101,8 +125,10 @@ class WSClient {
   }
 
   destroy () {
+    console.log('destroyed comm')
     this.nextOps = []
     this.isDestroyed = true
+    this.streamController.abort('destroyed')
   }
 }
 

@@ -10,6 +10,8 @@ import * as logging from 'lib0/logging'
 import { Ydb } from '../ydb.js' // eslint-disable-line
 import * as webcrypto from 'lib0/webcrypto'
 import * as utils from '../utils.js'
+import * as promise from 'lib0/promise'
+import * as dbtypes from '../dbtypes.js' // eslint-disable-line
 
 const _log = logging.createModuleLogger('@y/stream/websocket')
 /**
@@ -18,67 +20,6 @@ const _log = logging.createModuleLogger('@y/stream/websocket')
  * @param {...any} args
  */
 const log = (comm, type, ...args) => _log(logging.PURPLE, `(local=${comm.ydb.clientid.toString(36).slice(0, 4)},remote=${comm.clientid.toString(36).slice(0, 4)}) `, logging.ORANGE, '[' + type + '] ', logging.GREY, ...args.map(arg => typeof arg === 'function' ? arg() : arg))
-
-/**
- * @param {WebSocketCommInstance} comm
- */
-const setupWS = comm => {
-  if (comm.shouldConnect && comm.ws === null) {
-    log(comm, 'setup')
-    const websocket = new WS(comm.url)
-    websocket.binaryType = 'arraybuffer'
-    comm.ws = websocket
-    comm.wsconnecting = true
-    comm.wsconnected = false
-    comm.synced.clear()
-    websocket.onmessage = (event) => {
-      addReadMessage(comm, new Uint8Array(/** @type {ArrayBuffer} */ (event.data)))
-    }
-    websocket.onerror = /** @param {any} event */ (event) => {
-      log(comm, 'error', event)
-      comm.emit('connection-error', [/** @type {ErrorEvent} */(event), comm])
-    }
-    websocket.onclose = (event) => {
-      comm._readMessageQueue = queue.create()
-      comm.ws = null
-      comm.wsconnecting = false
-      if (comm.wsconnected) {
-        comm.wsconnected = false
-        comm.synced.clear()
-        comm.emit('status', [{
-          status: 'disconnected'
-        }, comm])
-      } else {
-        comm.wsUnsuccessfulReconnects++
-      }
-      comm.emit('connection-close', [/** @type {any} */(event), comm])
-      log(comm, 'close', 'close-code: ', event.code)
-      // Start with no reconnect timeout and increase timeout by
-      // using exponential backoff starting with 100ms
-      setTimeout(
-        setupWS,
-        math.min(
-          math.pow(2, comm.wsUnsuccessfulReconnects) * 100,
-          comm.maxBackoffTime
-        ),
-        comm
-      )
-    }
-    websocket.onopen = () => {
-      log(comm, 'open')
-      comm.wsconnecting = false
-      comm.wsconnected = true
-      comm.wsUnsuccessfulReconnects = 0
-      websocket.send(encoding.encode(encoder => protocol.writeInfo(encoder, comm.ydb, comm)))
-      comm.emit('status', [{
-        status: 'connected'
-      }, comm])
-    }
-    comm.emit('status', [{
-      status: 'connecting'
-    }, comm])
-  }
-}
 
 /**
  * @param {WebSocketCommInstance} comm
@@ -103,18 +44,15 @@ const addReadMessage = async (comm, m) => {
 }
 
 /**
- * Implementation of Comm for testing purposes. Syncs instances in the same thread.
- *
  * @implements comm.Comm
- * @extends ObservableV2<{ synced: function(WebSocketCommInstance):any, "connection-error": function(ErrorEvent, WebSocketCommInstance):any, "connection-close": function(CloseEvent, WebSocketCommInstance):any, status: function({ status: 'connecting'|'connected'|'disconnected' }, WebSocketCommInstance):any }>
  */
-class WebSocketCommInstance extends ObservableV2 {
+class WebSocketCommInstance {
   /**
-   * @param {import('../ydb.js').Ydb} ydb
-   * @param {string} url
+   * @param {WebSocketHandlerInstance} handler
    */
-  constructor (ydb, url) {
-    super()
+  constructor (handler) {
+    const { ydb, url } = handler
+    this.handler = handler
     this.synced = new utils.CollectionsSet()
     this.isDestroyed = false
     this.comm = true
@@ -135,30 +73,67 @@ class WebSocketCommInstance extends ObservableV2 {
      */
     this.deviceClaim = null
     /**
-     * @type {InstanceType<WS>|null}
-     */
-    this.ws = null
-    this.shouldConnect = true
-    this.wsconnecting = false
-    this.wsconnected = false
-    this.wsUnsuccessfulReconnects = 0
-    this.maxBackoffTime = 60000
-    /**
      * @type {queue.Queue<queue.QueueValue<Uint8Array>>}
      */
     this._readMessageQueue = queue.create()
-    setupWS(this)
-    ydb.comms.add(this)
-  }
-
-  destroy () {
-    log(this, 'destroy', new Error().stack)
-    this.isDestroyed = true
-    this.shouldConnect = false
+    this.streamController = new AbortController()
     this.wsconnected = false
-    this.wsconnecting = false
-    this.ws?.close() // close code 1000 - normal end of connection
-    this.ydb.comms.delete(this)
+    /**
+     * @type {WritableStream<Array<Uint8Array|dbtypes.OpValue>>}
+     */
+    this.writer = new WritableStream({
+      write: (message) => {
+        if (!this.wsconnected) {
+          return this.destroy()
+        }
+        const encodedMessage = encoding.encode(encoder => {
+          for (let i = 0; i < message.length; i++) {
+            const m = message[i]
+            if (m instanceof Uint8Array) {
+              encoding.writeUint8Array(encoder, m)
+            } else {
+              protocol.writeOps(encoder, /** @type {Array<dbtypes.OpValue>} */ (message))
+            }
+          }
+        })
+        this.ws.send(encodedMessage)
+        const maxBufferedAmount = 3000_000
+        if ((this.ws?.bufferedAmount || 0) > maxBufferedAmount) {
+          return promise.until(100, () => (this.ws?.bufferedAmount || 0) < maxBufferedAmount)
+        }
+      }
+    })
+    ydb.comms.add(this)
+    const ws = new WS(url)
+    this.ws = ws
+    ws.binaryType = 'arraybuffer'
+    ws.onmessage = (event) => {
+      addReadMessage(this, new Uint8Array(/** @type {ArrayBuffer} */ (event.data)))
+    }
+    ws.onerror = /** @param {any} event */ (event) => {
+      log(this, 'error', event)
+      handler.emit('connection-error', [/** @type {ErrorEvent} */(event), handler])
+    }
+    ws.onclose = (event) => {
+      handler.emit('status', [{
+        status: 'disconnected'
+      }, handler])
+      this.destroy()
+      handler.emit('connection-close', [/** @type {any} */(event), handler])
+      log(this, 'close', 'close-code: ', event.code)
+    }
+    ws.onopen = () => {
+      log(this, 'open')
+      this.wsconnected = true
+      handler.wsUnsuccessfulReconnects = 0
+      ws.send(encoding.encode(encoder => protocol.writeInfo(encoder, ydb, this)))
+      handler.emit('status', [{
+        status: 'connected'
+      }, handler])
+    }
+    handler.emit('status', [{
+      status: 'connecting'
+    }, handler])
   }
 
   /**
@@ -173,6 +148,74 @@ class WebSocketCommInstance extends ObservableV2 {
       return
     }
     this.destroy()
+  }
+
+  destroy () {
+    console.log('destroyed comm')
+    debugger
+    this.ws.close()
+    this.isDestroyed = true
+    this.ydb.comms.delete(this)
+    this._readMessageQueue = queue.create()
+    this.streamController.abort('destroyed')
+    if (this.wsconnected) {
+      this.handler.wsUnsuccessfulReconnects++
+    }
+    this.wsconnected = false
+    this.handler._setupNewComm()
+  }
+}
+
+/**
+ * @implements comm.CommHandler
+ * @extends ObservableV2<{ synced: function(WebSocketHandlerInstance):any, "connection-error": function(ErrorEvent, WebSocketHandlerInstance):any, "connection-close": function(CloseEvent, WebSocketHandlerInstance):any, status: function({ status: 'connecting'|'connected'|'disconnected' }, WebSocketHandlerInstance):any }>
+ */
+class WebSocketHandlerInstance extends ObservableV2 {
+  /**
+   * @param {import('../ydb.js').Ydb} ydb
+   * @param {string} url
+   */
+  constructor (ydb, url) {
+    super()
+    this.ydb = ydb
+    this.url = url
+    this.shouldConnect = true
+    this.wsUnsuccessfulReconnects = 0
+    this.maxBackoffTime = 60000
+    /**
+     * @type {WebSocketCommInstance?}
+     */
+    this.comm = null
+    if (this.shouldConnect) {
+      this._setupNewComm()
+    }
+  }
+
+  _setupNewComm () {
+    // Start with no reconnect timeout and increase timeout by
+    // using exponential backoff starting with 100ms
+    const setup = () => {
+      if (this.shouldConnect) {
+        this.comm = new WebSocketCommInstance(this)
+      }
+    }
+    if (this.wsUnsuccessfulReconnects === 0) {
+      setup()
+    } else {
+      setTimeout(
+        setup,
+        math.min(
+          math.pow(2, this.wsUnsuccessfulReconnects) * 100,
+          this.maxBackoffTime
+        )
+      )
+    }
+  }
+
+  destroy () {
+    super.destroy()
+    this.shouldConnect = false
+    this.comm?.destroy()
   }
 }
 
@@ -191,6 +234,6 @@ export class WebSocketComm {
    * @param {Ydb} ydb
    */
   init (ydb) {
-    return new WebSocketCommInstance(ydb, this.url)
+    return new WebSocketHandlerInstance(ydb, this.url)
   }
 }

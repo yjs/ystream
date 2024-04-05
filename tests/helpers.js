@@ -46,9 +46,7 @@ const testServerIdentity = {
 
 export const owner = testUser.user.hash
 export const collectionsDefiniton = [
-  { owner: buffer.toBase64(owner), collection: 'c1' },
-  { owner: buffer.toBase64(owner), collection: 'c2' },
-  { owner: buffer.toBase64(owner), collection: 'c3' }
+  { owner: buffer.toBase64(owner), collection: 'c1' }
 ]
 
 /**

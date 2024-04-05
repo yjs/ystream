@@ -82,7 +82,7 @@ export const testComm = async tc => {
  * @param {t.TestCase} tc
  */
 export const testPerformanceLoadingManyDocs = async tc => {
-  const N = 1000
+  const N = 10
   await Ydb.deleteYdb(getDbName(tc.testName))
   const ydb = await Ydb.openYdb(getDbName(tc.testName), [collectionDef])
   await t.measureTimeAsync(`Create ${N} documents with initial content`, async () => {

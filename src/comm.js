@@ -47,16 +47,25 @@ export class Comm {
   get isDestroyed () { return false }
   get isAuthenticated () { return false }
   set isAuthenticated (_v) { error.methodUnimplemented() }
+
   /**
-   * @param {Uint8Array} _message
+   * @type {WritableStream<Array<Uint8Array|import('./dbtypes.js').OpValue>>}
    */
-  send (_message) {
-    error.methodUnimplemented()
-  }
+  get writer () { return error.methodUnimplemented() }
+  /**
+   * @type {AbortController}
+   */
+  get streamController () { return error.methodUnimplemented() }
 
   destroy () {
     error.methodUnimplemented()
   }
+}
+/* c8 ignore end */
+
+/* c8 ignore start */
+export class CommHandler {
+
 }
 /* c8 ignore end */
 
@@ -67,7 +76,7 @@ export class Comm {
 export class CommConfiguration {
   /**
    * @param {Ydb} _ydb
-   * @return {Comm}
+   * @return {CommHandler}
    */
   init (_ydb) {
     error.methodUnimplemented()

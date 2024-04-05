@@ -159,7 +159,7 @@ export class CollectionKey {
   encode (encoder) {
     encoding.writeVarUint8Array(encoder, this.owner)
     encoding.writeVarString(encoder, this.collection)
-    encoding.writeUint32(encoder, this.opid)
+    encoding.writeUint32BigEndian(encoder, this.opid)
   }
 
   /**
@@ -169,7 +169,7 @@ export class CollectionKey {
   static decode (decoder) {
     const owner = decoding.readVarUint8Array(decoder)
     const collection = decoding.readVarString(decoder)
-    const opid = decoding.readUint32(decoder)
+    const opid = decoding.readUint32BigEndian(decoder)
     return new CollectionKey(owner, collection, opid)
   }
 }
@@ -401,7 +401,7 @@ export class DocKey {
     encoding.writeVarUint8Array(encoder, this.owner)
     encoding.writeVarString(encoder, this.collection)
     encoding.writeVarString(encoder, this.doc)
-    encoding.writeUint32(encoder, this.opid)
+    encoding.writeUint32BigEndian(encoder, this.opid)
   }
 
   /**
@@ -413,7 +413,7 @@ export class DocKey {
     const owner = decoding.readVarUint8Array(decoder)
     const collection = decoding.readVarString(decoder)
     const doc = decoding.readVarString(decoder)
-    const opid = decoding.readUint32(decoder)
+    const opid = decoding.readUint32BigEndian(decoder)
     return new DocKey(type, owner, collection, doc, opid)
   }
 }
@@ -483,7 +483,7 @@ export class NoPermissionIndexKey {
     encoding.writeVarUint8Array(encoder, this.owner)
     encoding.writeVarString(encoder, this.collection)
     encoding.writeVarString(encoder, this.doc)
-    encoding.writeUint32(encoder, this.clock)
+    encoding.writeUint32BigEndian(encoder, this.clock)
   }
 
   /**
@@ -494,7 +494,7 @@ export class NoPermissionIndexKey {
     const owner = decoding.readVarUint8Array(decoder)
     const collection = decoding.readVarString(decoder)
     const doc = decoding.readVarString(decoder)
-    const clock = decoding.readUint32(decoder)
+    const clock = decoding.readUint32BigEndian(decoder)
     return new NoPermissionIndexKey(owner, collection, doc, clock)
   }
 }

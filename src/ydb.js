@@ -161,10 +161,14 @@ export class Ydb extends ObservableV2 {
      * @type {Set<import('./comm.js').Comm>}
      */
     this.comms = new Set()
+    /**
+     * @type {Set<import('./comm.js').CommHandler>}
+     */
+    this.commHandlers = new Set()
     this.whenAuthenticated.then(() => {
       console.log(this.clientid.toString(36) + ': connecting to server')
       comms.forEach(comm =>
-        this.comms.add(comm.init(this))
+        this.commHandlers.add(comm.init(this))
       )
     })
   }

@@ -15,18 +15,22 @@ import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import { emitOpsEvent } from './ydb.js'
 import * as authorization from './api/authorization.js'
+import * as protocol from './protocol.js'
 
 /**
  * @typedef {import('./ydb.js').Ydb} Ydb
  */
 
 /**
+ * @deprecated
+ * @todo remove once the streamer works
+ *
  * Receive an event whenever an operation is added to ydb. This function ensures that listener is
  * called for every op after `clock`
  *
  * @param {Ydb} ydb
  * @param {number} clock
- * @param {function(Array<dbtypes.OpValue>, boolean):void} listener - listener(ops, isCurrent)
+ * @param {(ops: Array<dbtypes.OpValue>, isSynced: boolean) => void} listener - listener(ops, isCurrent)
  */
 export const consumeOps = async (ydb, clock, listener) => {
   let nextClock = clock
@@ -47,6 +51,116 @@ export const consumeOps = async (ydb, clock, listener) => {
   }
   ydb.on('ops', listener)
   return listener
+}
+
+/**
+ * @param {Ydb} ydb
+ * @param {number} startClock
+ * @param {Uint8Array?} owner
+ * @param {string?} collection
+ * @return {ReadableStream<Array<dbtypes.OpValue|Uint8Array>>}
+ */
+export const createOpsReader = (ydb, startClock, owner, collection) => {
+  let nextClock = startClock
+  /**
+   * @type {((ops: Array<dbtypes.OpValue>) => void) | null}
+   */
+  let listener = null
+  let registeredListener = false
+  /**
+   * @type {ReadableStream<Array<dbtypes.OpValue|Uint8Array>>}
+   */
+  const stream = new ReadableStream({
+    start (controller) {
+      listener = (ops) => {
+        nextClock = ops[ops.length - 1].localClock + 1
+        if (collection != null) {
+          ops = ops.filter(op => op.collection === collection && op.owner)
+        }
+        controller.enqueue(ops)
+      }
+    },
+    async pull (controller) {
+      if (registeredListener) return
+      console.log('desired size: ', controller.desiredSize, { nextClock })
+      return ydb.db.transact(async tr => {
+        do {
+          /**
+           * @type {Array<dbtypes.OpValue<operations.OpTypes>>}
+           */
+          let ops = []
+          if (owner != null && collection != null) {
+            const colEntries = await tr.tables.oplog.indexes.collection.getEntries({
+              start: new dbtypes.CollectionKey(owner, collection, nextClock),
+              end: new dbtypes.CollectionKey(owner, collection, number.HIGHEST_UINT32),
+              limit: 300
+            })
+            ops = colEntries.map(entry => {
+              entry.value.localClock = entry.fkey.v
+              if (entry.value.client === ydb.clientid) {
+                entry.value.clock = entry.fkey.v
+              }
+              return entry.value
+            })
+            if (ops.length > 0) {
+              nextClock = ops[ops.length - 1].localClock + 1
+            }
+          }
+          if (ops.length === 0) {
+            const entries = await tr.tables.oplog.getEntries({
+              start: new isodb.AutoKey(nextClock),
+              limit: 300
+            })
+            ops = entries.map(entry => {
+              entry.value.localClock = entry.key.v
+              if (entry.value.client === ydb.clientid) {
+                entry.value.clock = entry.key.v
+              }
+              return entry.value
+            })
+            if (ops.length > 0) {
+              nextClock = ops[ops.length - 1].localClock + 1
+            }
+            if (owner != null && collection != null) {
+              ops = ops.filter(op => op.collection === collection && array.equalFlat(op.owner, owner))
+            }
+          }
+          if (ops.length === 0) {
+            if (ydb._eclock == null && nextClock !== 0) {
+              ydb._eclock = nextClock
+            }
+            if (ydb._eclock === null || nextClock >= ydb._eclock) {
+              console.log('sending synced step')
+              controller.enqueue([
+                encoding.encode(encoder => {
+                  if (owner != null && collection != null) {
+                    protocol.writeSynced(encoder, owner, collection, nextClock)
+                  } else {
+                    protocol.writeSyncedAll(encoder, nextClock)
+                  }
+                })
+              ])
+              registeredListener = true
+              ydb.on('ops', /** @type {(ops: Array<dbtypes.OpValue>) => void} */ (listener))
+              break
+            }
+          }
+          while (ops.length > 0) {
+            controller.enqueue(ops.splice(0, 100))
+          }
+        } while ((controller.desiredSize || 0) > 0)
+      })
+    },
+    cancel (_reason) {
+      ydb.off('ops', /** @type {(ops: Array<dbtypes.OpValue>) => void} */ (listener))
+    }
+  }, {
+    highWaterMark: 200,
+    size (ops) {
+      return ops.length
+    }
+  })
+  return stream
 }
 
 /**
