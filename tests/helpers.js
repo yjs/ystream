@@ -41,7 +41,6 @@ const testServerIdentity = {
 
 /**
  * @typedef {Object} TestClientOptions
- * @property {Array<{ owner: string, collection: string }>} [TestClientOptions.collections]
  */
 
 export const owner = testUser.user.hash
@@ -77,10 +76,12 @@ export const emptyUpdate = Y.encodeStateAsUpdateV2(new Y.Doc())
 class TestClient {
   /**
    * @param {Ydb.Ydb} ydb
+   * @param {{ owner: string, collection: string }} collectionDef
    */
-  constructor (ydb) {
+  constructor (ydb, collectionDef) {
     this.ydb = ydb
-    this.doc1 = ydb.getYdoc(buffer.toBase64(testUser.user.hash), 'c1', 'ydoc')
+    const { owner, collection } = collectionDef
+    this.doc1 = ydb.getYdoc(owner, collection, 'ydoc')
   }
 }
 
@@ -90,6 +91,7 @@ class TestScenario {
    */
   constructor (name) {
     this.name = name
+    this.collectionDef = { owner: buffer.toBase64(owner), collection: this.name }
     /**
      * @type {Array<Ydb.Ydb>}
      */
@@ -99,19 +101,19 @@ class TestScenario {
   }
 
   /**
-   * @param {TestClientOptions} options
+   * @param {TestClientOptions} _options
    */
-  async createClient ({ collections = collectionsDefiniton } = {}) {
+  async createClient (_options = {}) {
     const dbname = `.test_dbs/${randTestRunName}-${this.name}-${this.cliNum++}`
     await Ydb.deleteYdb(dbname)
-    const ydb = await Ydb.openYdb(dbname, collections, {
+    const ydb = await Ydb.openYdb(dbname, [this.collectionDef], {
       comms: [new wscomm.WebSocketComm('ws://localhost:9000')]
     })
     console.log('registering server', testServerIdentity.user, testServerIdentity.user.hash)
     await authentication.registerUser(ydb, testServerIdentity.user, { isTrusted: true })
     await authentication.setUserIdentity(ydb, testUser.user, await testUser.user.publicKey, testUser.privateKey)
     this.clients.push(ydb)
-    return new TestClient(ydb)
+    return new TestClient(ydb, this.collectionDef)
   }
 
   /**

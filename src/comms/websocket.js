@@ -35,8 +35,10 @@ const addReadMessage = async (comm, m) => {
    */
   let currMessage
   while ((currMessage = readMessageQueue.start?.v) != null) {
+    log(comm, 'read message', { clientid: comm.clientid, len: currMessage.length })
     const reply = await protocol.readMessage(encoding.createEncoder(), decoding.createDecoder(currMessage), comm.ydb, comm)
     if (reply) {
+      console.log('sending reply')
       comm.send(encoding.toUint8Array(reply))
     }
     queue.dequeue(readMessageQueue)
@@ -78,28 +80,43 @@ class WebSocketCommInstance {
     this._readMessageQueue = queue.create()
     this.streamController = new AbortController()
     this.wsconnected = false
+    const randomIdentifier = Math.random() // @todo remove
     /**
-     * @type {WritableStream<Array<Uint8Array|dbtypes.OpValue>>}
+     * @type {WritableStream<{ messages: Array<Uint8Array|dbtypes.OpValue>, origin: any }>}
      */
     this.writer = new WritableStream({
-      write: (message) => {
+      write: ({ messages, origin }) => {
         if (!this.wsconnected) {
           return this.destroy()
         }
+        if (origin === this) return // skep messages received from this communication channel
+        log(this, 'sending ops', () => `buffered amount=${this.ws?.bufferedAmount}, `, () => { return `number of ops=${messages.length}, first=` }, () => {
+          const m = messages[0]
+          if (m instanceof dbtypes.OpValue) {
+            const { clock, localClock, client } = m
+            return { clock, localClock, client, randomIdentifier }
+          } else {
+            return 'control message'
+          }
+        })
         const encodedMessage = encoding.encode(encoder => {
-          for (let i = 0; i < message.length; i++) {
-            const m = message[i]
+          for (let i = 0; i < messages.length; i++) {
+            const m = messages[i]
             if (m instanceof Uint8Array) {
               encoding.writeUint8Array(encoder, m)
             } else {
-              protocol.writeOps(encoder, /** @type {Array<dbtypes.OpValue>} */ (message))
+              let len = 1
+              for (; i + len < messages.length && messages[i + len] instanceof dbtypes.OpValue; len++) { /* nop */ }
+              protocol.writeOps(encoder, /** @type {Array<dbtypes.OpValue>} */ (messages.slice(i, i + len)))
+              i += len - 1
             }
           }
         })
-        this.ws.send(encodedMessage)
+        this.send(encodedMessage)
         const maxBufferedAmount = 3000_000
         if ((this.ws?.bufferedAmount || 0) > maxBufferedAmount) {
-          return promise.until(100, () => (this.ws?.bufferedAmount || 0) < maxBufferedAmount)
+          // @todo make timeout (30000ms) configurable
+          return promise.until(30000, () => (this.ws?.bufferedAmount || 0) < maxBufferedAmount)
         }
       }
     })
@@ -126,7 +143,7 @@ class WebSocketCommInstance {
       log(this, 'open')
       this.wsconnected = true
       handler.wsUnsuccessfulReconnects = 0
-      ws.send(encoding.encode(encoder => protocol.writeInfo(encoder, ydb, this)))
+      this.send(encoding.encode(encoder => protocol.writeInfo(encoder, ydb, this)))
       handler.emit('status', [{
         status: 'connected'
       }, handler])
@@ -143,6 +160,7 @@ class WebSocketCommInstance {
    */
   send (message) {
     if (this.ws && this.wsconnected) {
+      log(this, 'sending message', `Message len: ${message.length}`)
       // @todo handle the case that message could not be sent
       this.ws.send(message)
       return
@@ -152,7 +170,6 @@ class WebSocketCommInstance {
 
   destroy () {
     console.log('destroyed comm')
-    debugger
     this.ws.close()
     this.isDestroyed = true
     this.ydb.comms.delete(this)

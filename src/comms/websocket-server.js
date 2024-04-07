@@ -28,8 +28,17 @@ import * as webcrypto from 'lib0/webcrypto'
 import * as authentication from '../api/authentication.js'
 import * as dbtypes from '../dbtypes.js' // eslint-disable-line
 import * as utils from '../utils.js'
+import * as logging from 'lib0/logging'
 
 const expectedBufferedAmount = 512 * 1024 // 512kb
+
+const _log = logging.createModuleLogger('@y/stream/websocket')
+/**
+ * @param {WSClient} comm
+ * @param {string} type
+ * @param {...any} args
+ */
+const log = (comm, type, ...args) => _log(logging.PURPLE, `(local=${comm.ydb.clientid.toString(36).slice(0, 4)},remote=${comm.clientid.toString(36).slice(0, 4)}) `, logging.ORANGE, '[' + type + '] ', logging.GREY, ...args.map(arg => typeof arg === 'function' ? arg() : arg))
 
 /**
  * @implements comm.Comm
@@ -37,8 +46,10 @@ const expectedBufferedAmount = 512 * 1024 // 512kb
 class WSClient {
   /**
    * @param {uws.WebSocket<{ client: WSClient }>} ws
+   * @param {ydb.Ydb} ydb
    */
-  constructor (ws) {
+  constructor (ws, ydb) {
+    this.ydb = ydb
     this.clientid = -1
     /**
      * @type {import('../dbtypes.js').UserIdentity|null}
@@ -60,25 +71,38 @@ class WSClient {
     this.challenge = webcrypto.getRandomValues(new Uint8Array(64))
     this.streamController = new AbortController()
     /**
-     * @type {WritableStream<Array<dbtypes.OpValue|Uint8Array>>}
+     * @type {WritableStream<{ messages: Array<dbtypes.OpValue|Uint8Array>, origin: any }>}
      */
     this.writer = new WritableStream({
-      write: (message) => {
-        if (this.isDestroyed) return
+      write: ({ messages, origin }) => {
+        if (origin === this) return
+        log(this, 'sending ops', () => { return `number of ops=${messages.length}, first=` }, () => {
+          const m = messages[0]
+          if (m instanceof dbtypes.OpValue) {
+            const { clock, localClock, client } = m
+            return { clock, localClock, client }
+          } else {
+            return 'control message'
+          }
+        })
         const encodedMessage = encoding.encode(encoder => {
-          for (let i = 0; i < message.length; i++) {
-            const m = message[i]
+          for (let i = 0; i < messages.length; i++) {
+            const m = messages[i]
             if (m instanceof Uint8Array) {
               encoding.writeUint8Array(encoder, m)
             } else {
-              protocol.writeOps(encoder, /** @type {Array<dbtypes.OpValue>} */ (message))
+              let len = 1
+              for (; i + len < messages.length && messages[i + len] instanceof dbtypes.OpValue; len++) { /* nop */ }
+              protocol.writeOps(encoder, /** @type {Array<dbtypes.OpValue>} */ (messages.slice(i, i + len)))
+              i += len - 1
             }
           }
         })
         this.send(encodedMessage)
         const maxBufferedAmount = 3000_000
         if (this.ws.getBufferedAmount() > maxBufferedAmount) {
-          return promise.until(100, () => this.isDestroyed || this.ws.getBufferedAmount() < maxBufferedAmount)
+          // @todo make timeout (30s) configurable
+          return promise.until(30000, () => this.isDestroyed || this.ws.getBufferedAmount() < maxBufferedAmount)
         }
       }
     })
@@ -170,7 +194,7 @@ export class WSServer {
         idleTimeout: 60,
         /* Handlers */
         open: (ws) => {
-          const client = new WSClient(ws)
+          const client = new WSClient(ws, ydb)
           ws.getUserData().client = client
           client.send(encoding.encode(encoder => {
             protocol.writeInfo(encoder, ydb, client)

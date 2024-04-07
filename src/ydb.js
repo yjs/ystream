@@ -8,9 +8,9 @@ import { ObservableV2 } from 'lib0/observable'
 import * as random from 'lib0/random'
 import * as actions from './actions.js'
 import * as dbtypes from './dbtypes.js' // eslint-disable-line
-import * as eventloop from 'lib0/eventloop'
 import * as bc from 'lib0/broadcastchannel'
 import * as utils from './utils.js'
+import * as error from 'lib0/error'
 
 /**
  * @typedef {Object} YdbConf
@@ -28,61 +28,70 @@ const _sortOpsHelper = (a, b) => a.localClock - b.localClock
 /**
  * @param {Ydb} ydb
  * @param {Array<dbtypes.OpValue>} ops
+ * @param {any} origin
  */
-const _emitOpsEvent = (ydb, ops) => {
+const _emitOpsEvent = (ydb, ops, origin) => {
   if (ops.length === 0) {
     return
   }
   const eclock = ydb._eclock
   ops.sort(_sortOpsHelper)
-  ydb._eops.push(...ops)
-  if (eclock != null && ops[0].localClock > eclock) {
-    return
+  if (eclock == null || ops[0].localClock === eclock) {
+    ydb.emit('ops', [ops, origin, true])
+    ydb._eclock = ops[ops.length - 1].localClock + 1
+  } else {
+    error.unexpectedCase()
   }
-  if (ydb._eev == null) {
-    ydb._eev = eventloop.timeout(0, () => {
-      // @TODO emit some event here so that other threads pull the op
-      const eops = ydb._eops
-      eops.sort(_sortOpsHelper)
-      let i = 0
-      if (ydb._eclock == null) ydb._eclock = eops[0].localClock
-      while (i < eops.length) {
-        const opclock = eops[i].localClock
-        if (opclock === ydb._eclock) {
-          ydb._eclock++
-          i++
-        } else if (opclock < /** @type {number} */ (ydb._eclock)) {
-          eops.splice(i, 1)
-        } else {
-          break
-        }
-      }
-      let opsToEmit
-      if (i === eops.length) {
-        opsToEmit = eops
-        ydb._eops = []
-      } else {
-        opsToEmit = eops.splice(0, i) // this also keeps the ops in ydb._eops
-      }
-      if (opsToEmit.length > 0) ydb.emit('ops', [opsToEmit, true])
-      ydb._eev = null
-    })
-  }
+  // the below code needs to be refactored
+  // ydb._eops.push(...ops)
+  // if (eclock != null && ops[0].localClock > eclock) {
+  //   return
+  // }
+  // if (ydb._eev == null) {
+  //   ydb._eev = eventloop.timeout(0, () => {
+  //     // @TODO emit some event here so that other threads pull the op
+  //     const eops = ydb._eops
+  //     eops.sort(_sortOpsHelper)
+  //     let i = 0
+  //     if (ydb._eclock == null) ydb._eclock = eops[0].localClock
+  //     while (i < eops.length) {
+  //       const opclock = eops[i].localClock
+  //       if (opclock === ydb._eclock) {
+  //         ydb._eclock++
+  //         i++
+  //       } else if (opclock < /** @type {number} */ (ydb._eclock)) {
+  //         eops.splice(i, 1)
+  //       } else {
+  //         break
+  //       }
+  //     }
+  //     let opsToEmit
+  //     if (i === eops.length) {
+  //       opsToEmit = eops
+  //       ydb._eops = []
+  //     } else {
+  //       opsToEmit = eops.splice(0, i) // this also keeps the ops in ydb._eops
+  //     }
+  //     if (opsToEmit.length > 0) ydb.emit('ops', [opsToEmit, true])
+  //     ydb._eev = null
+  //   })
+  // }
 }
 
 /**
  * @param {Ydb} ydb
  * @param {Array<dbtypes.OpValue>} ops
+ * @param {any} origin
  */
-export const emitOpsEvent = (ydb, ops) => {
+export const emitOpsEvent = (ydb, ops, origin) => {
   if (ops.length > 0) {
-    _emitOpsEvent(ydb, ops)
+    _emitOpsEvent(ydb, ops, origin)
     bc.publish('@y/stream#' + ydb.dbname, ops.map(op => op.localClock), ydb)
   }
 }
 
 /**
- * @extends ObservableV2<{ sync:function():void, ops:function(Array<dbtypes.OpValue>,boolean):void, authenticate:function():void }>
+ * @extends ObservableV2<{ sync:function():void, ops:function(Array<dbtypes.OpValue>,any,boolean):void, authenticate:function():void }>
  */
 export class Ydb extends ObservableV2 {
   /**
@@ -137,24 +146,13 @@ export class Ydb extends ObservableV2 {
      */
     this._eclock = null
     /**
-     * Ops to emit.
-     *
-     * @type {Array<dbtypes.OpValue>}
-     */
-    this._eops = []
-    /**
-     * Timeout object for emitting ops.
-     *
-     * @type {eventloop.TimeoutObject|null}
-     */
-    this._eev = null
-    /**
      * Subscribe to broadcastchannel event that is fired whenever an op is added to the database.
      */
     this._esub = bc.subscribe('@y/stream#' + this.dbname, /** @param {Array<number>} opids */ async (opids, origin) => {
       if (origin !== this) {
+        console.log('received ops via broadcastchannel', opids[0])
         const ops = await actions.getOps(this, opids[0])
-        _emitOpsEvent(this, ops)
+        _emitOpsEvent(this, ops, 'broadcastchannel')
       }
     })
     /**
@@ -188,6 +186,9 @@ export class Ydb extends ObservableV2 {
       guid: docname
     })
     docset.add(ydoc)
+    ydoc.on('destroy', () => {
+      docset.delete(ydoc)
+    })
     bindydoc(this, owner, collection, docname, ydoc)
     return ydoc
   }
@@ -201,7 +202,6 @@ export class Ydb extends ObservableV2 {
       })
     })
     this.comms.forEach(comm => comm.destroy())
-    this._eev?.destroy()
     bc.unsubscribe('@y/stream#' + this.dbname, this._esub)
     return this.db.destroy()
   }

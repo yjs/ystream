@@ -33,6 +33,7 @@ import * as protocol from './protocol.js'
  * @param {(ops: Array<dbtypes.OpValue>, isSynced: boolean) => void} listener - listener(ops, isCurrent)
  */
 export const consumeOps = async (ydb, clock, listener) => {
+  console.warn('consumeOps should not be triggered')
   let nextClock = clock
   // get all ops, check whether eclock matches or if eclock is null
   while (ydb._eclock == null || nextClock < ydb._eclock) {
@@ -58,26 +59,26 @@ export const consumeOps = async (ydb, clock, listener) => {
  * @param {number} startClock
  * @param {Uint8Array?} owner
  * @param {string?} collection
- * @return {ReadableStream<Array<dbtypes.OpValue|Uint8Array>>}
+ * @return {ReadableStream<{ messages: Array<dbtypes.OpValue|Uint8Array>, origin: any }>}
  */
 export const createOpsReader = (ydb, startClock, owner, collection) => {
   let nextClock = startClock
   /**
-   * @type {((ops: Array<dbtypes.OpValue>) => void) | null}
+   * @type {((ops: Array<dbtypes.OpValue>, origin: any) => void) | null}
    */
   let listener = null
   let registeredListener = false
   /**
-   * @type {ReadableStream<Array<dbtypes.OpValue|Uint8Array>>}
+   * @type {ReadableStream<{ messages: Array<dbtypes.OpValue|Uint8Array>, origin: any }>}
    */
   const stream = new ReadableStream({
     start (controller) {
-      listener = (ops) => {
+      listener = (ops, origin) => {
         nextClock = ops[ops.length - 1].localClock + 1
         if (collection != null) {
           ops = ops.filter(op => op.collection === collection && op.owner)
         }
-        controller.enqueue(ops)
+        controller.enqueue({ messages: ops, origin })
       }
     },
     async pull (controller) {
@@ -93,7 +94,7 @@ export const createOpsReader = (ydb, startClock, owner, collection) => {
             const colEntries = await tr.tables.oplog.indexes.collection.getEntries({
               start: new dbtypes.CollectionKey(owner, collection, nextClock),
               end: new dbtypes.CollectionKey(owner, collection, number.HIGHEST_UINT32),
-              limit: 300
+              limit: 3000
             })
             ops = colEntries.map(entry => {
               entry.value.localClock = entry.fkey.v
@@ -109,7 +110,7 @@ export const createOpsReader = (ydb, startClock, owner, collection) => {
           if (ops.length === 0) {
             const entries = await tr.tables.oplog.getEntries({
               start: new isodb.AutoKey(nextClock),
-              limit: 300
+              limit: 3000
             })
             ops = entries.map(entry => {
               entry.value.localClock = entry.key.v
@@ -131,22 +132,25 @@ export const createOpsReader = (ydb, startClock, owner, collection) => {
             }
             if (ydb._eclock === null || nextClock >= ydb._eclock) {
               console.log('sending synced step')
-              controller.enqueue([
-                encoding.encode(encoder => {
-                  if (owner != null && collection != null) {
-                    protocol.writeSynced(encoder, owner, collection, nextClock)
-                  } else {
-                    protocol.writeSyncedAll(encoder, nextClock)
-                  }
-                })
-              ])
+              controller.enqueue({
+                messages: [
+                  encoding.encode(encoder => {
+                    if (owner != null && collection != null) {
+                      protocol.writeSynced(encoder, owner, collection, nextClock)
+                    } else {
+                      protocol.writeSyncedAll(encoder, nextClock)
+                    }
+                  })
+                ],
+                origin: 'db'
+              })
               registeredListener = true
               ydb.on('ops', /** @type {(ops: Array<dbtypes.OpValue>) => void} */ (listener))
               break
             }
           }
           while (ops.length > 0) {
-            controller.enqueue(ops.splice(0, 100))
+            controller.enqueue({ messages: ops.splice(0, 1000), origin: 'db' })
           }
         } while ((controller.desiredSize || 0) > 0)
       })
@@ -156,8 +160,8 @@ export const createOpsReader = (ydb, startClock, owner, collection) => {
     }
   }, {
     highWaterMark: 200,
-    size (ops) {
-      return ops.length
+    size (message) {
+      return message.messages.length
     }
   })
   return stream
@@ -415,7 +419,7 @@ export const addOp = async (ydb, owner, collection, doc, opv) => {
     tr.tables.clocks.set(new dbtypes.ClocksKey(op.client, owner, collection), new dbtypes.ClientClockValue(op.clock, op.clock))
     return op
   })
-  emitOpsEvent(ydb, [op])
+  emitOpsEvent(ydb, [op], ydb)
 }
 
 /**
@@ -444,8 +448,9 @@ export const getClocks = ydb =>
  * @param {Ydb} ydb
  * @param {Array<dbtypes.OpValue>} ops
  * @param {dbtypes.UserIdentity} user
+ * @param {any} origin
  */
-export const applyRemoteOps = async (ydb, ops, user) => {
+export const applyRemoteOps = async (ydb, ops, user, origin) => {
   /**
    * @type {Array<dbtypes.OpValue<any>>}
    */
@@ -514,7 +519,7 @@ export const applyRemoteOps = async (ydb, ops, user) => {
       tr.tables.clocks.set(clocksKey, clockValue)
     })
   })
-  emitOpsEvent(ydb, filteredOpsPermsChecked)
+  emitOpsEvent(ydb, filteredOpsPermsChecked, origin)
   // @todo only apply doc ops to ydocs if sender has write permissions
   /**
    * @type {Map<string, Map<string, Map<string, Array<dbtypes.OpValue>>>>}

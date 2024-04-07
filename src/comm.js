@@ -49,7 +49,7 @@ export class Comm {
   set isAuthenticated (_v) { error.methodUnimplemented() }
 
   /**
-   * @type {WritableStream<Array<Uint8Array|import('./dbtypes.js').OpValue>>}
+   * @type {WritableStream<{ messages: Array<Uint8Array|import('./dbtypes.js').OpValue>, origin: any }>}
    */
   get writer () { return error.methodUnimplemented() }
   /**
