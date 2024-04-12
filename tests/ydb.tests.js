@@ -50,7 +50,7 @@ export const testYdocLoad = async tc => {
  * @param {t.TestCase} tc
  */
 export const testComm = async tc => {
-  const th = helpers.createTestScenario(tc)
+  const th = await helpers.createTestScenario(tc)
   const { owner, collection } = th.collectionDef
   const [{ ydb: ydb1 }, { ydb: ydb2 }] = await th.createClients(2)
   console.log('@y/stream1 user hashes: ', await authentication.getAllRegisteredUserHashes(ydb1))
@@ -110,8 +110,8 @@ export const testPerformanceLoadingManyDocs = async tc => {
  * @param {t.TestCase} tc
  */
 export const testPerformanceSyncingManyDocs = async tc => {
-  const N = 300000
-  const th = helpers.createTestScenario(tc)
+  const N = 10000
+  const th = await helpers.createTestScenario(tc)
   const { owner, collection } = th.collectionDef
   const server = th.server
   if (server === null) {

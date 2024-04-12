@@ -38,7 +38,6 @@ const addReadMessage = async (comm, m) => {
     log(comm, 'read message', { clientid: comm.clientid, len: currMessage.length })
     const reply = await protocol.readMessage(encoding.createEncoder(), decoding.createDecoder(currMessage), comm.ydb, comm)
     if (reply) {
-      console.log('sending reply')
       comm.send(encoding.toUint8Array(reply))
     }
     queue.dequeue(readMessageQueue)
@@ -135,9 +134,12 @@ class WebSocketCommInstance {
       handler.emit('status', [{
         status: 'disconnected'
       }, handler])
-      this.destroy()
       handler.emit('connection-close', [/** @type {any} */(event), handler])
       log(this, 'close', 'close-code: ', event.code)
+      if (this.handler.comm === this) {
+        this.handler._setupNewComm()
+      }
+      this.destroy()
     }
     ws.onopen = () => {
       log(this, 'open')
@@ -169,7 +171,7 @@ class WebSocketCommInstance {
   }
 
   destroy () {
-    console.log('destroyed comm')
+    this.handler.comm = null
     this.ws.close()
     this.isDestroyed = true
     this.ydb.comms.delete(this)
@@ -179,7 +181,6 @@ class WebSocketCommInstance {
       this.handler.wsUnsuccessfulReconnects++
     }
     this.wsconnected = false
-    this.handler._setupNewComm()
   }
 }
 
@@ -209,9 +210,12 @@ class WebSocketHandlerInstance extends ObservableV2 {
   }
 
   _setupNewComm () {
+    if (!this.shouldConnect) return
+    this.comm?.destroy()
     // Start with no reconnect timeout and increase timeout by
     // using exponential backoff starting with 100ms
     const setup = () => {
+      this.comm?.destroy()
       if (this.shouldConnect) {
         this.comm = new WebSocketCommInstance(this)
       }

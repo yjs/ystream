@@ -83,6 +83,11 @@ class TestClient {
     const { owner, collection } = collectionDef
     this.doc1 = ydb.getYdoc(owner, collection, 'ydoc')
   }
+
+  async destroy () {
+    this.doc1.destroy()
+    await promise.all([this.ydb.destroy()])
+  }
 }
 
 class TestScenario {
@@ -93,7 +98,7 @@ class TestScenario {
     this.name = name
     this.collectionDef = { owner: buffer.toBase64(owner), collection: this.name }
     /**
-     * @type {Array<Ydb.Ydb>}
+     * @type {Array<TestClient>}
      */
     this.clients = []
     this.cliNum = 0
@@ -112,8 +117,9 @@ class TestScenario {
     console.log('registering server', testServerIdentity.user, testServerIdentity.user.hash)
     await authentication.registerUser(ydb, testServerIdentity.user, { isTrusted: true })
     await authentication.setUserIdentity(ydb, testUser.user, await testUser.user.publicKey, testUser.privateKey)
-    this.clients.push(ydb)
-    return new TestClient(ydb, this.collectionDef)
+    const client = new TestClient(ydb, this.collectionDef)
+    this.clients.push(client)
+    return client
   }
 
   /**
@@ -122,12 +128,25 @@ class TestScenario {
   async createClients (num) {
     return promise.all(array.unfold(num, () => this.createClient()))
   }
+
+  async destroy () {
+    await promise.all(this.clients.map(client => client.destroy()))
+  }
 }
+
+/**
+ * @type {TestScenario?}
+ */
+let currTestScenario = null
 
 /**
  * @param {t.TestCase} tc
  */
-export const createTestScenario = tc => new TestScenario(getDbName(tc))
+export const createTestScenario = async tc => {
+  await currTestScenario?.destroy()
+  currTestScenario = new TestScenario(getDbName(tc))
+  return currTestScenario
+}
 
 /**
  * @param {Y.Doc} ydoc1

@@ -37,6 +37,7 @@ const collection = 'my-notes-app'
 const y = await ydb.openYdb('wss://localhost:3000', [{ owner, collection }], {
   comms: [new wscomm.WebSocketComm('ws://localhost:9000')]
 })
+
 await authentication.registerUser(y, dbtypes.UserIdentity.decode(decoding.createDecoder(buffer.fromBase64(testServerUser))), { isTrusted: true })
 await authentication.setUserIdentity(y, testUser.user, await testUser.user.publicKey, testUser.privateKey)
 
