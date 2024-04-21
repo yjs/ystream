@@ -78,10 +78,10 @@ class TestClient {
    * @param {Ydb.Ydb} ydb
    * @param {{ owner: string, collection: string }} collectionDef
    */
-  constructor (ydb, collectionDef) {
+  constructor (ydb, { owner, collection }) {
     this.ydb = ydb
-    const { owner, collection } = collectionDef
-    this.doc1 = ydb.getYdoc(owner, collection, 'ydoc')
+    this.collection = ydb.getCollection(owner, collection)
+    this.doc1 = this.collection.getYdoc('ydoc')
   }
 
   async destroy () {
@@ -111,8 +111,8 @@ class TestScenario {
   async createClient (_options = {}) {
     const dbname = `.test_dbs/${randTestRunName}-${this.name}-${this.cliNum++}`
     await Ydb.deleteYdb(dbname)
-    const ydb = await Ydb.openYdb(dbname, [this.collectionDef], {
-      comms: [new wscomm.WebSocketComm('ws://localhost:9000')]
+    const ydb = await Ydb.openYdb(dbname, {
+      comms: [new wscomm.WebSocketComm('ws://localhost:9000', [this.collectionDef])]
     })
     console.log('registering server', testServerIdentity.user, testServerIdentity.user.hash)
     await authentication.registerUser(ydb, testServerIdentity.user, { isTrusted: true })

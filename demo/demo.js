@@ -34,14 +34,15 @@ const testUser = {
 const owner = buffer.toBase64(testUser.user.hash)
 
 const collection = 'my-notes-app'
-const y = await ydb.openYdb('wss://localhost:3000', [{ owner, collection }], {
-  comms: [new wscomm.WebSocketComm('ws://localhost:9000')]
+const y = await ydb.openYdb('wss://localhost:3000', {
+  comms: [new wscomm.WebSocketComm('ws://localhost:9000', [{ owner, collection }])]
 })
 
 await authentication.registerUser(y, dbtypes.UserIdentity.decode(decoding.createDecoder(buffer.fromBase64(testServerUser))), { isTrusted: true })
 await authentication.setUserIdentity(y, testUser.user, await testUser.user.publicKey, testUser.privateKey)
 
-const yroot = y.getYdoc(owner, collection, 'index')
+const ycollection = y.getCollection(owner, collection)
+const yroot = ycollection.getYdoc('index')
 const ynotes = yroot.getArray('notes')
 
 // add some css
@@ -113,7 +114,7 @@ const createNotes = n => {
   const notes = []
   for (let i = 0; i < n; i++) {
     const ynote = new Y.Map()
-    const ynoteContent = y.getYdoc(owner, collection, `#${ynotes.length + i}`)
+    const ynoteContent = ycollection.getYdoc(`#${ynotes.length + i}`)
     ynoteContent.getText().insert(0, `# Note #${ynotes.length + i}\nsome initial content`)
     ynote.set('name', `Note #${ynotes.length + i}`)
     ynote.set('content', ynoteContent)
@@ -192,7 +193,7 @@ const openDocumentInCodeMirror = (ydocname, yprops) => {
   currentEditorState?.unregisterHandlers()
   currentEditorState?.view.destroy()
   currentEditorState?.ydoc.destroy()
-  const ydoc = y.getYdoc(owner, collection, ydocname)
+  const ydoc = ycollection.getYdoc(ydocname)
   const ytext = ydoc.getText()
   const state = EditorState.create({
     doc: ytext.toString(),

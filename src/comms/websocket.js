@@ -12,6 +12,9 @@ import * as webcrypto from 'lib0/webcrypto'
 import * as utils from '../utils.js'
 import * as promise from 'lib0/promise'
 import * as dbtypes from '../dbtypes.js' // eslint-disable-line
+import * as map from 'lib0/map'
+import * as buffer from 'lib0/buffer'
+import * as actions from '../actions.js'
 
 const _log = logging.createModuleLogger('@y/stream/websocket')
 /**
@@ -46,12 +49,14 @@ const addReadMessage = async (comm, m) => {
 
 /**
  * @implements comm.Comm
+ * @extends {ObservableV2<{ authenticated: (comm:WebSocketCommInstance) => void }>}
  */
-class WebSocketCommInstance {
+class WebSocketCommInstance extends ObservableV2 {
   /**
    * @param {WebSocketHandlerInstance} handler
    */
   constructor (handler) {
+    super()
     const { ydb, url } = handler
     this.handler = handler
     this.synced = new utils.CollectionsSet()
@@ -61,6 +66,7 @@ class WebSocketCommInstance {
     this.url = url
     this.clientid = -1
     this.isAuthenticated = false
+    this.sentChallengeAnswer = false
     /**
      * @type {import('../dbtypes.js').UserIdentity|null}
      */
@@ -132,7 +138,8 @@ class WebSocketCommInstance {
     }
     ws.onclose = (event) => {
       handler.emit('status', [{
-        status: 'disconnected'
+        status: 'disconnected',
+        comm: this
       }, handler])
       handler.emit('connection-close', [/** @type {any} */(event), handler])
       log(this, 'close', 'close-code: ', event.code)
@@ -147,12 +154,29 @@ class WebSocketCommInstance {
       handler.wsUnsuccessfulReconnects = 0
       this.send(encoding.encode(encoder => protocol.writeInfo(encoder, ydb, this)))
       handler.emit('status', [{
-        status: 'connected'
+        status: 'connected',
+        comm: this
       }, handler])
     }
     handler.emit('status', [{
-      status: 'connecting'
+      status: 'connecting',
+      comm: this
     }, handler])
+    this.on('authenticated', async () => {
+      const encoder = encoding.createEncoder()
+      await ydb.db.transact(() =>
+        promise.all(map.map(ydb.collections, (cols, _owner) => {
+          const owner = buffer.fromBase64(_owner)
+          return promise.all(map.map(cols, (_, collection) =>
+            actions.getClock(ydb, this.clientid, owner, collection).then(clock => {
+              protocol.writeRequestOps(encoder, owner, collection, clock)
+              return clock
+            })
+          ))
+        }))
+      )
+      this.send(encoding.toUint8Array(encoder))
+    })
   }
 
   /**
@@ -171,6 +195,7 @@ class WebSocketCommInstance {
   }
 
   destroy () {
+    super.destroy()
     this.handler.comm = null
     this.ws.close()
     this.isDestroyed = true
@@ -186,17 +211,19 @@ class WebSocketCommInstance {
 
 /**
  * @implements comm.CommHandler
- * @extends ObservableV2<{ synced: function(WebSocketHandlerInstance):any, "connection-error": function(ErrorEvent, WebSocketHandlerInstance):any, "connection-close": function(CloseEvent, WebSocketHandlerInstance):any, status: function({ status: 'connecting'|'connected'|'disconnected' }, WebSocketHandlerInstance):any }>
+ * @extends ObservableV2<{ synced: function(WebSocketHandlerInstance):any, "connection-error": function(ErrorEvent, WebSocketHandlerInstance):any, "connection-close": function(CloseEvent, WebSocketHandlerInstance):any, status: function({ status: 'connecting'|'connected'|'disconnected', comm: WebSocketCommInstance }, WebSocketHandlerInstance):any }>
  */
 class WebSocketHandlerInstance extends ObservableV2 {
   /**
    * @param {import('../ydb.js').Ydb} ydb
    * @param {string} url
+   * @param {Array<{ owner: string, collection: string }>} collections
    */
-  constructor (ydb, url) {
+  constructor (ydb, url, collections) {
     super()
     this.ydb = ydb
     this.url = url
+    this.collections = collections
     this.shouldConnect = true
     this.wsUnsuccessfulReconnects = 0
     this.maxBackoffTime = 60000
@@ -246,15 +273,17 @@ class WebSocketHandlerInstance extends ObservableV2 {
 export class WebSocketComm {
   /**
    * @param {string} url
+   * @param {Array<{ owner: string, collection: string }>} collections
    */
-  constructor (url) {
+  constructor (url, collections) {
     this.url = url
+    this.collections = collections
   }
 
   /**
    * @param {Ydb} ydb
    */
   init (ydb) {
-    return new WebSocketHandlerInstance(ydb, this.url)
+    return new WebSocketHandlerInstance(ydb, this.url, this.collections)
   }
 }

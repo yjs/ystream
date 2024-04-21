@@ -22,39 +22,6 @@ import * as protocol from './protocol.js'
  */
 
 /**
- * @deprecated
- * @todo remove once the streamer works
- *
- * Receive an event whenever an operation is added to ydb. This function ensures that listener is
- * called for every op after `clock`
- *
- * @param {Ydb} ydb
- * @param {number} clock
- * @param {(ops: Array<dbtypes.OpValue>, isSynced: boolean) => void} listener - listener(ops, isCurrent)
- */
-export const consumeOps = async (ydb, clock, listener) => {
-  console.warn('consumeOps should not be triggered')
-  let nextClock = clock
-  // get all ops, check whether eclock matches or if eclock is null
-  while (ydb._eclock == null || nextClock < ydb._eclock) {
-    const ops = await getOps(ydb, nextClock)
-    if (ops.length > 0) {
-      nextClock = ops[ops.length - 1].localClock + 1
-      if (ydb._eclock === null) {
-        ydb._eclock = nextClock
-      } else {
-        break
-      }
-    } else {
-      break
-    }
-    listener(ops, ydb._eclock == null || ydb._eclock <= nextClock)
-  }
-  ydb.on('ops', listener)
-  return listener
-}
-
-/**
  * @param {Ydb} ydb
  * @param {number} startClock
  * @param {Uint8Array?} owner
@@ -531,7 +498,7 @@ export const applyRemoteOps = async (ydb, ops, user, origin) => {
   sorted.forEach((collections, owner) => {
     // @todo check if this is reached
     collections.forEach((col, colname) => {
-      const docs = ydb.collections.get(owner)?.get(colname)
+      const docs = ydb.collections.get(owner)?.get(colname)?.docs
       if (docs) {
         col.forEach((updates, docname) => {
           const docupdates = utils.filterYjsUpdateOps(updates)

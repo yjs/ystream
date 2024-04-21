@@ -91,38 +91,34 @@ export const emitOpsEvent = (ydb, ops, origin) => {
 }
 
 /**
- * @extends ObservableV2<{ sync:function():void, ops:function(Array<dbtypes.OpValue>,any,boolean):void, authenticate:function():void }>
+ * @extends ObservableV2<{ sync:function():void, ops:function(Array<dbtypes.OpValue>,any,boolean):void, authenticate:function():void, "collection-opened":(collection:Collection)=>void }>
  */
 export class Ydb extends ObservableV2 {
   /**
-   * @param {Array<{ owner: string, collection: string }>} collections
    * @param {string} dbname
    * @param {isodb.IDB<typeof db.def>} _db
    * @param {dbtypes.UserIdentity|null} user
    * @param {dbtypes.DeviceClaim|null} deviceClaim
    * @param {YdbConf} conf
    */
-  constructor (collections, dbname, _db, user, deviceClaim, { comms = [], acceptNewUsers = false, syncsEverything = false } = {}) {
+  constructor (dbname, _db, user, deviceClaim, { comms = [], acceptNewUsers = false, syncsEverything = false } = {}) {
     super()
     this.dbname = dbname
     /**
      * @type {isodb.IDB<typeof db.def>}
      */
     this.db = _db
-    /**
-     * Whether to sync all collections (i.e. `collections = ['*']`)
-     *
-     * @type {boolean}
-     */
-    this.syncsEverything = syncsEverything
     this.acceptNewUsers = acceptNewUsers
     /**
-     * @type {Map<string,Map<string,Map<string,Set<Y.Doc>>>>}
+     * @type {Map<string,Map<string,Collection>>}
      */
     this.collections = new Map()
-    collections.forEach(({ owner, collection }) => { map.setIfUndefined(this.collections, owner, map.create).set(collection, new Map()) })
     this.syncedCollections = new utils.CollectionsSet()
     this.isSynced = false
+    /**
+     * Whether to sync all collections (usually only done by a server)
+     */
+    this.syncsEverything = syncsEverything
     this.whenSynced = promise.create(resolve =>
       this.once('sync', resolve)
     )
@@ -174,14 +170,50 @@ export class Ydb extends ObservableV2 {
   /**
    * @param {string} owner
    * @param {string} collection
+   */
+  getCollection (owner, collection) {
+    return map.setIfUndefined(map.setIfUndefined(this.collections, owner, map.create), collection, () => new Collection(this, owner, collection))
+  }
+
+  destroy () {
+    this.collections.forEach(owner => {
+      owner.forEach(collection => {
+        collection.destroy()
+      })
+    })
+    this.comms.forEach(comm => comm.destroy())
+    bc.unsubscribe('@y/stream#' + this.dbname, this._esub)
+    return this.db.destroy()
+  }
+}
+
+/**
+ * @extends ObservableV2<{ sync:function():void, ops:function(Array<dbtypes.OpValue>,any,boolean):void }>
+ */
+export class Collection extends ObservableV2 {
+  /**
+   * @param {Ydb} stream
+   * @param {string} owner
+   * @param {string} collection
+   */
+  constructor (stream, owner, collection) {
+    super()
+    this.stream = stream
+    this.owner = owner
+    this.collection = collection
+    /**
+     * @type {Map<string, Set<Y.Doc>>}
+     */
+    this.docs = new Map()
+    this.isSynced = false
+    stream.emit('collection-opened', [this])
+  }
+
+  /**
    * @param {string} docname
    */
-  getYdoc (owner, collection, docname) {
-    const col = this.syncsEverything
-      ? map.setIfUndefined(map.setIfUndefined(this.collections, owner, map.create), collection, map.create)
-      : this.collections.get(owner)?.get(collection)
-    if (col == null) { throw new Error('Collection was not specified') }
-    const docset = map.setIfUndefined(col, docname, () => new Set())
+  getYdoc (docname) {
+    const docset = map.setIfUndefined(this.docs, docname, () => new Set())
     const ydoc = new Y.Doc({
       guid: docname
     })
@@ -189,20 +221,11 @@ export class Ydb extends ObservableV2 {
     ydoc.on('destroy', () => {
       docset.delete(ydoc)
     })
-    bindydoc(this, owner, collection, docname, ydoc)
+    bindydoc(this.stream, this.owner, this.collection, docname, ydoc)
     return ydoc
   }
 
   destroy () {
-    this.collections.forEach(owner => {
-      owner.forEach(collection => {
-        collection.forEach(docs => {
-          docs.forEach(doc => doc.destroy())
-        })
-      })
-    })
-    this.comms.forEach(comm => comm.destroy())
-    bc.unsubscribe('@y/stream#' + this.dbname, this._esub)
-    return this.db.destroy()
+    this.stream.collections.get(this.owner)?.delete(this.collection)
   }
 }

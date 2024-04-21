@@ -12,7 +12,7 @@ const testOwner = new Uint8Array([1, 2, 3])
  * @param {t.TestCase} tc
  */
 export const testBasic = async tc => {
-  const ydb1 = await D.openYdb(getDbName(tc), [])
+  const ydb1 = await D.openYdb(getDbName(tc))
   actions.addOp(ydb1, testOwner, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
   actions.addOp(ydb1, testOwner, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
   actions.addOp(ydb1, testOwner, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))

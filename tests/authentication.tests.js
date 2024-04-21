@@ -20,7 +20,7 @@ const createTestDb = async tc => {
   const testInstances = map.setIfUndefined(instances, tc.testName, () => /** @type {any} */ ([]))
   const dbname = `./.test_dbs/${tc.moduleName}-${tc.testName}-${testInstances.length}`
   await dby.deleteYdb(dbname)
-  const y = await dby.openYdb(dbname, [])
+  const y = await dby.openYdb(dbname)
   testInstances.push(testInstances)
   return y
 }

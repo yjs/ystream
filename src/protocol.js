@@ -5,8 +5,6 @@ import * as decoding from 'lib0/decoding'
 import * as error from 'lib0/error'
 import * as array from 'lib0/array'
 import * as actions from './actions.js'
-import * as map from 'lib0/map'
-import * as promise from 'lib0/promise'
 import * as logging from 'lib0/logging'
 import * as authentication from './api/authentication.js'
 import * as buffer from 'lib0/buffer'
@@ -149,12 +147,11 @@ export const writeRequestAllOps = (encoder, clock) => {
 }
 
 /**
- * @param {encoding.Encoder} encoder
  * @param {decoding.Decoder} decoder
  * @param {Ydb} ydb
  * @param {import('./comm.js').Comm} comm - this is used to subscribe to messages
  */
-const readRequestOps = async (encoder, decoder, ydb, comm) => {
+const readRequestOps = async (decoder, ydb, comm) => {
   const requestedAllOps = decoding.readUint8(decoder) === 0
   let owner = null
   let collection = null
@@ -240,16 +237,14 @@ const readInfo = async (encoder, decoder, ydb, comm) => {
   })
   // @todo send some kind of challenge
   log(ydb, comm, 'Info Challenge', () => Array.from(challenge))
-  await writeChallengeAnswer(encoder, ydb, challenge)
+  await writeChallengeAnswer(encoder, ydb, challenge, comm)
 }
 
 /**
- * @param {encoding.Encoder} encoder
  * @param {decoding.Decoder} decoder
  * @param {import('./comm.js').Comm} comm
- * @param {Ydb} ydb
  */
-const readChallengeAnswer = async (encoder, decoder, ydb, comm) => {
+const readChallengeAnswer = async (decoder, comm) => {
   const deviceClaim = comm.deviceClaim
   if (deviceClaim == null) {
     error.unexpectedCase()
@@ -260,23 +255,7 @@ const readChallengeAnswer = async (encoder, decoder, ydb, comm) => {
     throw new Error('Wrong challenge')
   }
   comm.isAuthenticated = true
-  // @todo now send requestOps
-  if (ydb.syncsEverything) {
-    const clock = await actions.getClock(ydb, comm.clientid, null, null)
-    writeRequestAllOps(encoder, clock)
-  } else {
-    await ydb.db.transact(() =>
-      promise.all(map.map(ydb.collections, (cols, _owner) => {
-        const owner = buffer.fromBase64(_owner)
-        return promise.all(map.map(cols, (_, collection) =>
-          actions.getClock(ydb, comm.clientid, owner, collection).then(clock => {
-            writeRequestOps(encoder, owner, collection, clock)
-            return clock
-          })
-        ))
-      }))
-    )
-  }
+  if (comm.sentChallengeAnswer) comm.emit('authenticated', [comm])
 }
 
 /**
@@ -284,8 +263,9 @@ const readChallengeAnswer = async (encoder, decoder, ydb, comm) => {
  * @param {encoding.Encoder} encoder
  * @param {Ydb} ydb
  * @param {Uint8Array} challenge - this is used to subscribe to messages
+ * @param {import('./comm.js').Comm} comm - this is used to subscribe to messages
  */
-export const writeChallengeAnswer = async (encoder, ydb, challenge) => {
+export const writeChallengeAnswer = async (encoder, ydb, challenge, comm) => {
   encoding.writeUint8(encoder, messageChallengeAnswer)
   await ydb.db.transact(async tr => {
     const pk = await tr.objects.device.get('private')
@@ -295,6 +275,8 @@ export const writeChallengeAnswer = async (encoder, ydb, challenge) => {
     })
     encoding.writeVarString(encoder, jwt)
   })
+  comm.sentChallengeAnswer = true
+  if (comm.isAuthenticated) comm.emit('authenticated', [comm])
 }
 
 /**
@@ -310,7 +292,7 @@ export const readMessage = async (encoder, decoder, ydb, comm) => {
       if (messageType === messageInfo) {
         await readInfo(encoder, decoder, ydb, comm)
       } else if (messageType === messageChallengeAnswer) {
-        await readChallengeAnswer(encoder, decoder, ydb, comm)
+        await readChallengeAnswer(decoder, comm)
       } else {
         if (comm.deviceClaim == null || comm.user == null || !comm.isAuthenticated) {
           log(ydb, comm, 'closing unauthenticated connection')
@@ -322,7 +304,7 @@ export const readMessage = async (encoder, decoder, ydb, comm) => {
             break
           }
           case messageRequestOps: {
-            await readRequestOps(encoder, decoder, ydb, comm)
+            await readRequestOps(decoder, ydb, comm)
             break
           }
           case messageSynced: {

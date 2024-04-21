@@ -29,6 +29,8 @@ import * as authentication from '../api/authentication.js'
 import * as dbtypes from '../dbtypes.js' // eslint-disable-line
 import * as utils from '../utils.js'
 import * as logging from 'lib0/logging'
+import * as observable from 'lib0/observable'
+import * as actions from '../actions.js'
 
 const expectedBufferedAmount = 512 * 1024 // 512kb
 
@@ -42,13 +44,15 @@ const log = (comm, type, ...args) => _log(logging.PURPLE, `(local=${comm.ydb.cli
 
 /**
  * @implements comm.Comm
+ * @extends {observable.ObservableV2<{ authenticated: (comm: WSClient) => void }>}
  */
-class WSClient {
+class WSClient extends observable.ObservableV2 {
   /**
    * @param {uws.WebSocket<{ client: WSClient }>} ws
    * @param {ydb.Ydb} ydb
    */
   constructor (ws, ydb) {
+    super()
     this.ydb = ydb
     this.clientid = -1
     /**
@@ -68,6 +72,7 @@ class WSClient {
     this.isDestroyed = false
     this.synced = new utils.CollectionsSet()
     this.isAuthenticated = false
+    this.sentChallengeAnswer = false
     this.challenge = webcrypto.getRandomValues(new Uint8Array(64))
     this.streamController = new AbortController()
     /**
@@ -105,6 +110,12 @@ class WSClient {
           return promise.until(30000, () => this.isDestroyed || this.ws.getBufferedAmount() < maxBufferedAmount)
         }
       }
+    })
+    this.on('authenticated', async () => {
+      const encoder = encoding.createEncoder()
+      const clock = await actions.getClock(ydb, this.clientid, null, null)
+      protocol.writeRequestAllOps(encoder, clock)
+      this.send(encoding.toUint8Array(encoder))
     })
   }
 
@@ -149,6 +160,7 @@ class WSClient {
   }
 
   destroy () {
+    super.destroy()
     console.log('destroyed comm')
     this.nextOps = []
     this.isDestroyed = true
@@ -164,7 +176,7 @@ class WSClient {
  * @param {{ user: dbtypes.UserIdentity, privateKey: CryptoKey }} [options.identity]
  */
 export const createWSServer = async ({ port = 9000, dbname = '.ydb-websocket-server', acceptNewUsers = true, identity } = {}) => {
-  const db = await ydb.openYdb(dbname, [], { acceptNewUsers, syncsEverything: true })
+  const db = await ydb.openYdb(dbname, { acceptNewUsers, syncsEverything: true })
   const server = new WSServer(db, port)
   if (!db.isAuthenticated) {
     if (identity) {
