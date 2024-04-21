@@ -1,4 +1,4 @@
-import { Ydb } from './index.js' // eslint-disable-line
+import { Ystream } from './index.js' // eslint-disable-line
 import * as dbtypes from './dbtypes.js'
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
@@ -14,12 +14,12 @@ import * as string from 'lib0/string'
 
 const _log = logging.createModuleLogger('@y/stream/protocol')
 /**
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {import('./comm.js').Comm} comm
  * @param {string} type
  * @param {...any} args
  */
-const log = (ydb, comm, type, ...args) => _log(logging.PURPLE, `(local=${ydb.clientid.toString(36).slice(0, 4)},remote=${comm.clientid.toString(36).slice(0, 4)}${ydb.syncsEverything ? ',server=true' : ''}) `, logging.ORANGE, '[' + type + '] ', logging.GREY, ...args.map(arg => typeof arg === 'function' ? arg() : arg))
+const log = (ystream, comm, type, ...args) => _log(logging.PURPLE, `(local=${ystream.clientid.toString(36).slice(0, 4)},remote=${comm.clientid.toString(36).slice(0, 4)}${ystream.syncsEverything ? ',server=true' : ''}) `, logging.ORANGE, '[' + type + '] ', logging.GREY, ...args.map(arg => typeof arg === 'function' ? arg() : arg))
 
 const messageOps = 0
 const messageRequestOps = 1
@@ -42,10 +42,10 @@ export const writeOps = (encoder, ops) => {
 
 /**
  * @param {decoding.Decoder} decoder
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {import('./comm.js').Comm} comm
  */
-const readOps = (decoder, ydb, comm) => {
+const readOps = (decoder, ystream, comm) => {
   const numOfOps = decoding.readVarUint(decoder)
   /**
    * @type {Array<dbtypes.OpValue>}
@@ -54,12 +54,12 @@ const readOps = (decoder, ydb, comm) => {
   for (let i = 0; i < numOfOps; i++) {
     ops.push(/** @type {dbtypes.OpValue} */ (dbtypes.OpValue.decode(decoder)))
   }
-  log(ydb, comm, 'Ops', `received ${ops.length} ops. decoderlen=${decoder.arr.length}. first: clock=${ops[0].clock},client=${ops[0].client}`)
+  log(ystream, comm, 'Ops', `received ${ops.length} ops. decoderlen=${decoder.arr.length}. first: clock=${ops[0].clock},client=${ops[0].client}`)
   // console.log(ops)
   if (comm.user == null) {
     error.unexpectedCase()
   }
-  return actions.applyRemoteOps(ydb, ops, comm.user, comm)
+  return actions.applyRemoteOps(ystream, ops, comm.user, comm)
 }
 
 /**
@@ -87,39 +87,39 @@ export const writeSyncedAll = (encoder, nextClock) => {
 /**
  * @param {encoding.Encoder} _encoder
  * @param {decoding.Decoder} decoder
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {import('./comm.js').Comm|null} comm
  */
-const readSynced = async (_encoder, decoder, ydb, comm) => {
+const readSynced = async (_encoder, decoder, ystream, comm) => {
   const owner = decoding.readVarUint8Array(decoder)
   const collection = decoding.readVarString(decoder)
   decoding.readVarUint(decoder) // confirmed clock
   if (comm == null) return
   comm.synced.add(owner, collection)
-  ydb.syncedCollections.add(owner, collection)
-  if (ydb.isSynced) return
-  if (array.from(ydb.collections.entries()).every(([owner, cols]) => array.from(cols.keys()).every(cname => ydb.syncedCollections.has(owner, cname)))) {
-    ydb.isSynced = true
-    log(ydb, comm, 'Synced', `synced "${collection}" .. emitted sync event`)
-    ydb.emit('sync', [])
+  ystream.syncedCollections.add(owner, collection)
+  if (ystream.isSynced) return
+  if (array.from(ystream.collections.entries()).every(([owner, cols]) => array.from(cols.keys()).every(cname => ystream.syncedCollections.has(owner, cname)))) {
+    ystream.isSynced = true
+    log(ystream, comm, 'Synced', `synced "${collection}" .. emitted sync event`)
+    ystream.emit('sync', [])
   } else {
-    log(ydb, comm, 'Synced', ` synced "${collection}" .. waiting for other collections`)
+    log(ystream, comm, 'Synced', ` synced "${collection}" .. waiting for other collections`)
   }
 }
 
 /**
  * @param {encoding.Encoder} _encoder
  * @param {decoding.Decoder} decoder
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {import('./comm.js').Comm|null} comm
  */
-const readSyncedAll = async (_encoder, decoder, ydb, comm) => {
+const readSyncedAll = async (_encoder, decoder, ystream, comm) => {
   decoding.readVarUint(decoder) // confirmed clock
   if (comm == null) return
-  if (ydb.isSynced) return
-  ydb.isSynced = true
-  log(ydb, comm, 'Synced', 'synced "*" collections .. emitted sync event')
-  ydb.emit('sync', [])
+  if (ystream.isSynced) return
+  ystream.isSynced = true
+  log(ystream, comm, 'Synced', 'synced "*" collections .. emitted sync event')
+  ystream.emit('sync', [])
 }
 
 /**
@@ -148,27 +148,27 @@ export const writeRequestAllOps = (encoder, clock) => {
 
 /**
  * @param {decoding.Decoder} decoder
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {import('./comm.js').Comm} comm - this is used to subscribe to messages
  */
-const readRequestOps = async (decoder, ydb, comm) => {
+const readRequestOps = async (decoder, ystream, comm) => {
   const requestedAllOps = decoding.readUint8(decoder) === 0
   let owner = null
   let collection = null
   let nextClock = 0
   if (requestedAllOps) {
     nextClock = decoding.readVarUint(decoder)
-    log(ydb, comm, 'RequestOps', 'requested all ops')
+    log(ystream, comm, 'RequestOps', 'requested all ops')
   } else {
     // requested only a single collection
     owner = decoding.readVarUint8Array(decoder)
     collection = decoding.readVarString(decoder)
     nextClock = decoding.readVarUint(decoder)
-    log(ydb, comm, 'RequestOps', `requested "${collection}"`)
+    log(ystream, comm, 'RequestOps', `requested "${collection}"`)
   }
-  console.log(ydb.clientid, 'subscribing conn to ops', { fcid: comm.clientid, collection, owner })
+  console.log(ystream.clientid, 'subscribing conn to ops', { fcid: comm.clientid, collection, owner })
   // @todo add method to filter by owner & collection
-  actions.createOpsReader(ydb, nextClock, owner, collection).pipeTo(comm.writer, { signal: comm.streamController.signal }).catch((reason) => {
+  actions.createOpsReader(ystream, nextClock, owner, collection).pipeTo(comm.writer, { signal: comm.streamController.signal }).catch((reason) => {
     console.log('ended pipe', { reason, isDestroyed: comm.isDestroyed })
     // if (reason !== 'destroyed') debugger
   })
@@ -177,17 +177,17 @@ const readRequestOps = async (decoder, ydb, comm) => {
 /**
  * @todo should contain device auth, exchange of certificates, some verification by challenge, ..
  * @param {encoding.Encoder} encoder
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {import('./comm.js').Comm} comm - this is used to subscribe to messages
  */
-export const writeInfo = (encoder, ydb, comm) => {
+export const writeInfo = (encoder, ystream, comm) => {
   encoding.writeUint8(encoder, messageInfo)
-  encoding.writeVarUint(encoder, ydb.clientid)
-  if (ydb.user == null || ydb.deviceClaim == null) {
+  encoding.writeVarUint(encoder, ystream.clientid)
+  if (ystream.user == null || ystream.deviceClaim == null) {
     error.unexpectedCase()
   }
-  ydb.user.encode(encoder)
-  ydb.deviceClaim.encode(encoder)
+  ystream.user.encode(encoder)
+  ystream.deviceClaim.encode(encoder)
   // challenge that the other user must sign using the device's private key
   encoding.writeVarUint8Array(encoder, comm.challenge)
 }
@@ -197,29 +197,29 @@ export const writeInfo = (encoder, ydb, comm) => {
  * @param {encoding.Encoder} encoder
  * @param {decoding.Decoder} decoder
  * @param {import('./comm.js').Comm} comm
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  */
-const readInfo = async (encoder, decoder, ydb, comm) => {
+const readInfo = async (encoder, decoder, ystream, comm) => {
   const clientid = decoding.readVarUint(decoder)
   // @todo user only has to be submitted, if we want to register a new user. For now, we simply
   // always send the user identity in all initial requests.
   const user = dbtypes.UserIdentity.decode(decoder)
   const deviceClaim = dbtypes.DeviceClaim.decode(decoder)
   const challenge = decoding.readVarUint8Array(decoder)
-  const registeredUser = await authentication.getRegisteredUser(ydb, user)
+  const registeredUser = await authentication.getRegisteredUser(ystream, user)
   comm.clientid = clientid
   comm.user = registeredUser || user
   // @todo 1. read device claim and verify it
   comm.deviceClaim = deviceClaim
   if (!array.equalFlat(user.hash, sha256.digest(string.encodeUtf8(deviceClaim.unsafeDecode().payload.iss)))) {
-    log(ydb, comm, 'InfoRejected', 'rejecting comm because client hash doesn\'t match with device claim', '\n', user.hash, deviceClaim.hash)
+    log(ystream, comm, 'InfoRejected', 'rejecting comm because client hash doesn\'t match with device claim', '\n', user.hash, deviceClaim.hash)
     error.unexpectedCase()
   }
   if (registeredUser == null) {
-    if (ydb.acceptNewUsers) {
-      await authentication.registerUser(ydb, user)
+    if (ystream.acceptNewUsers) {
+      await authentication.registerUser(ystream, user)
     } else {
-      log(ydb, comm, 'destroying', 'User not registered')
+      log(ystream, comm, 'destroying', 'User not registered')
       comm.destroy()
       return
     }
@@ -229,15 +229,15 @@ const readInfo = async (encoder, decoder, ydb, comm) => {
     comm.destroy()
     error.unexpectedCase()
   }
-  await ydb.db.transact(async tr => {
+  await ystream.db.transact(async tr => {
     const currClaim = await tr.tables.devices.indexes.hash.get(deviceClaim.hash)
     if (currClaim == null) {
       await tr.tables.devices.add(deviceClaim)
     }
   })
   // @todo send some kind of challenge
-  log(ydb, comm, 'Info Challenge', () => Array.from(challenge))
-  await writeChallengeAnswer(encoder, ydb, challenge, comm)
+  log(ystream, comm, 'Info Challenge', () => Array.from(challenge))
+  await writeChallengeAnswer(encoder, ystream, challenge, comm)
 }
 
 /**
@@ -261,13 +261,13 @@ const readChallengeAnswer = async (decoder, comm) => {
 /**
  * @todo should contain device auth, exchange of certificates, some verification by challenge, ..
  * @param {encoding.Encoder} encoder
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {Uint8Array} challenge - this is used to subscribe to messages
  * @param {import('./comm.js').Comm} comm - this is used to subscribe to messages
  */
-export const writeChallengeAnswer = async (encoder, ydb, challenge, comm) => {
+export const writeChallengeAnswer = async (encoder, ystream, challenge, comm) => {
   encoding.writeUint8(encoder, messageChallengeAnswer)
-  await ydb.db.transact(async tr => {
+  await ystream.db.transact(async tr => {
     const pk = await tr.objects.device.get('private')
     if (pk == null) error.unexpectedCase()
     const jwt = await jose.encodeJwt(pk.key, {
@@ -282,37 +282,37 @@ export const writeChallengeAnswer = async (encoder, ydb, challenge, comm) => {
 /**
  * @param {encoding.Encoder} encoder
  * @param {decoding.Decoder} decoder
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {import('./comm.js').Comm} comm - this is used to set the "synced" property
  */
-export const readMessage = async (encoder, decoder, ydb, comm) => {
+export const readMessage = async (encoder, decoder, ystream, comm) => {
   try {
     do {
       const messageType = decoding.readUint8(decoder)
       if (messageType === messageInfo) {
-        await readInfo(encoder, decoder, ydb, comm)
+        await readInfo(encoder, decoder, ystream, comm)
       } else if (messageType === messageChallengeAnswer) {
         await readChallengeAnswer(decoder, comm)
       } else {
         if (comm.deviceClaim == null || comm.user == null || !comm.isAuthenticated) {
-          log(ydb, comm, 'closing unauthenticated connection')
+          log(ystream, comm, 'closing unauthenticated connection')
           comm.destroy()
         }
         switch (messageType) {
           case messageOps: {
-            await readOps(decoder, ydb, comm)
+            await readOps(decoder, ystream, comm)
             break
           }
           case messageRequestOps: {
-            await readRequestOps(decoder, ydb, comm)
+            await readRequestOps(decoder, ystream, comm)
             break
           }
           case messageSynced: {
-            await readSynced(encoder, decoder, ydb, comm)
+            await readSynced(encoder, decoder, ystream, comm)
             break
           }
           case messageSyncedAll: {
-            await readSyncedAll(encoder, decoder, ydb, comm)
+            await readSyncedAll(encoder, decoder, ystream, comm)
             break
           }
           /* c8 ignore next 3 */
@@ -327,7 +327,7 @@ export const readMessage = async (encoder, decoder, ydb, comm) => {
     }
     return null
   } catch (err) {
-    log(ydb, comm, 'Info rejection', 'Closing connection because of unexpected error', /** @type {Error} */ (err).stack)
+    log(ystream, comm, 'Info rejection', 'Closing connection because of unexpected error', /** @type {Error} */ (err).stack)
     comm.destroy()
   }
 }

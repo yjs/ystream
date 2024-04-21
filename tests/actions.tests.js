@@ -12,17 +12,17 @@ const testOwner = new Uint8Array([1, 2, 3])
  * @param {t.TestCase} tc
  */
 export const testBasic = async tc => {
-  const ydb1 = await D.openYdb(getDbName(tc))
-  actions.addOp(ydb1, testOwner, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
-  actions.addOp(ydb1, testOwner, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
-  actions.addOp(ydb1, testOwner, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
-  actions.addOp(ydb1, testOwner, 'collection2', 'docname', new operations.OpYjsUpdate(emptyUpdate))
-  actions.addOp(ydb1, testOwner, 'collection', 'docname2', new operations.OpYjsUpdate(emptyUpdate))
-  const docOps = await actions.getDocOps(ydb1, testOwner, 'collection', 'docname', operations.OpYjsUpdateType, 0)
+  const stream1 = await D.open(getDbName(tc))
+  actions.addOp(stream1, testOwner, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
+  actions.addOp(stream1, testOwner, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
+  actions.addOp(stream1, testOwner, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
+  actions.addOp(stream1, testOwner, 'collection2', 'docname', new operations.OpYjsUpdate(emptyUpdate))
+  actions.addOp(stream1, testOwner, 'collection', 'docname2', new operations.OpYjsUpdate(emptyUpdate))
+  const docOps = await actions.getDocOps(stream1, testOwner, 'collection', 'docname', operations.OpYjsUpdateType, 0)
   t.assert(docOps.length === 3)
-  const allOps = await actions.getOps(ydb1, 0)
+  const allOps = await actions.getOps(stream1, 0)
   t.assert(allOps.length === 3) // because doc ops are merged
-  const collectionOps = await actions.getCollectionOps(ydb1, testOwner, 'collection', 0)
+  const collectionOps = await actions.getCollectionOps(stream1, testOwner, 'collection', 0)
   t.assert(collectionOps.length === 2)
 }
 

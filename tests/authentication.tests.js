@@ -1,6 +1,6 @@
 import * as t from 'lib0/testing'
 import * as authentication from '../src/api/authentication.js'
-import * as dby from '../src/index.js'
+import * as Ystream from '../src/index.js'
 import * as map from 'lib0/map'
 import * as ecdsa from 'lib0/crypto/ecdsa'
 import * as encoding from 'lib0/encoding'
@@ -9,7 +9,7 @@ import * as buffer from 'lib0/buffer'
 import * as json from 'lib0/json'
 
 /**
- * @type {Map<string, Array<dby.Ydb>>}
+ * @type {Map<string, Array<Ystream.Ystream>>}
  */
 const instances = new Map()
 
@@ -19,16 +19,16 @@ const instances = new Map()
 const createTestDb = async tc => {
   const testInstances = map.setIfUndefined(instances, tc.testName, () => /** @type {any} */ ([]))
   const dbname = `./.test_dbs/${tc.moduleName}-${tc.testName}-${testInstances.length}`
-  await dby.deleteYdb(dbname)
-  const y = await dby.openYdb(dbname)
+  await Ystream.remove(dbname)
+  const y = await Ystream.open(dbname)
   testInstances.push(testInstances)
   return y
 }
 
 /**
- * @param {t.TestCase} tc
+ * @param {t.TestCase} _tc
  */
-export const testGenerateAuth = async tc => {
+export const testGenerateAuth = async _tc => {
   const userObject = await authentication.createUserIdentity({ extractable: true })
   const [publicKey, privateKey, user] = await promise.all([
     ecdsa.exportKeyJwk(userObject.publicKey),

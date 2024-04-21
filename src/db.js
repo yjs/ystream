@@ -11,10 +11,6 @@ import * as ecdsa from 'lib0/crypto/ecdsa'
  * - implement todo queue for requesting docs
  */
 
-/**
- * @typedef {import('./ydb.js').Ydb} Ydb
- */
-
 export const def = {
   tables: {
     oplog: {

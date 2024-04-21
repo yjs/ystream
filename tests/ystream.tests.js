@@ -2,7 +2,7 @@ import * as t from 'lib0/testing'
 import * as promise from 'lib0/promise'
 import * as buffer from 'lib0/buffer'
 import * as math from 'lib0/math'
-import * as Ydb from '../src/index.js'
+import * as Ystream from '../src/index.js'
 import * as helpers from './helpers.js'
 import * as error from 'lib0/error'
 import * as authentication from '../src/api/authentication.js'
@@ -23,9 +23,9 @@ const owner = buffer.toBase64(helpers.owner)
  */
 export const testYdocLoad = async tc => {
   const collectionName = tc.testName
-  await Ydb.deleteYdb(getDbName(tc.testName))
-  const ydb = await Ydb.openYdb(getDbName(tc.testName))
-  const collection = ydb.getCollection(owner, collectionName)
+  await Ystream.remove(getDbName(tc.testName))
+  const ystream = await Ystream.open(getDbName(tc.testName))
+  const collection = ystream.getCollection(owner, collectionName)
   const ydoc1 = collection.getYdoc('ydoc')
   await ydoc1.whenLoaded
   ydoc1.getMap().set('k', 'v')
@@ -35,10 +35,10 @@ export const testYdocLoad = async tc => {
   ydoc1.getMap().set('k', 'v2')
   t.assert(ydoc1.getMap().get('k') === 'v2')
   console.log('before destroy')
-  await ydb.destroy()
+  await ystream.destroy()
   console.log('after destroy')
-  const ydb2 = await Ydb.openYdb(getDbName(tc.testName))
-  const collection2 = ydb2.getCollection(owner, collectionName)
+  const ystream2 = await Ystream.open(getDbName(tc.testName))
+  const collection2 = ystream2.getCollection(owner, collectionName)
   console.log('after open')
   const ydoc3 = collection2.getYdoc('ydoc')
   console.log('after getdoc')
@@ -52,10 +52,10 @@ export const testYdocLoad = async tc => {
  */
 export const testComm = async tc => {
   const th = await helpers.createTestScenario(tc)
-  const [{ ydb: ydb1, collection: collection1 }, { ydb: ydb2, collection: collection2 }] = await th.createClients(2)
-  console.log('@y/stream1 user hashes: ', await authentication.getAllRegisteredUserHashes(ydb1))
-  console.log('@y/stream2 user hashes: ', await authentication.getAllRegisteredUserHashes(ydb2))
-  await promise.all([ydb1.whenSynced, ydb2.whenSynced])
+  const [{ ystream: ystream1, collection: collection1 }, { ystream: ystream2, collection: collection2 }] = await th.createClients(2)
+  console.log('@y/stream1 user hashes: ', await authentication.getAllRegisteredUserHashes(ystream1))
+  console.log('@y/stream2 user hashes: ', await authentication.getAllRegisteredUserHashes(ystream2))
+  await promise.all([ystream1.whenSynced, ystream2.whenSynced])
   const ydoc1 = collection1.getYdoc('ydoc')
   ydoc1.getMap().set('k', 'v1')
   const ydoc2 = collection2.getYdoc('ydoc')
@@ -66,8 +66,8 @@ export const testComm = async tc => {
   t.compare(ydoc1.getMap().get('k'), 'v2')
   await helpers.waitDocsSynced(ydoc1, ydoc2)
   t.compare(ydoc2.getMap().get('k'), 'v2')
-  const { ydb: ydb3, collection: collection3 } = await th.createClient()
-  await ydb3.whenSynced
+  const { ystream: ystream3, collection: collection3 } = await th.createClient()
+  await ystream3.whenSynced
   const ydoc3 = collection3.getYdoc('ydoc')
   await ydoc3.whenLoaded
   t.compare(ydoc3.getMap().get('k'), 'v2')
@@ -79,9 +79,9 @@ export const testComm = async tc => {
 export const testPerformanceLoadingManyDocs = async tc => {
   const N = 10
   const collectionName = tc.testName
-  await Ydb.deleteYdb(getDbName(tc.testName))
-  const ydb = await Ydb.openYdb(getDbName(tc.testName))
-  const collection = ydb.getCollection(owner, collectionName)
+  await Ystream.remove(getDbName(tc.testName))
+  const ystream = await Ystream.open(getDbName(tc.testName))
+  const collection = ystream.getCollection(owner, collectionName)
   await t.measureTimeAsync(`Create ${N} documents with initial content`, async () => {
     for (let i = 0; i < N; i++) {
       const ydoc = collection.getYdoc('doc-' + i)
@@ -91,8 +91,8 @@ export const testPerformanceLoadingManyDocs = async tc => {
     await lastdoc.whenLoaded
     t.assert(lastdoc.getMap().get('i') === N - 1)
   })
-  const ydb2 = await Ydb.openYdb(getDbName(tc.testName))
-  const collection2 = ydb2.getCollection(owner, collectionName)
+  const ystream2 = await Ystream.open(getDbName(tc.testName))
+  const collection2 = ystream2.getCollection(owner, collectionName)
   await t.measureTimeAsync(`Loading ${N} documents with initial content`, async () => {
     const ps = []
     for (let i = 0; i < N; i++) {
@@ -126,7 +126,7 @@ export const testPerformanceSyncingManyDocs = async tc => {
       if (i % 10000 === 0 && i !== 0) {
         console.log(`progress: ${math.round(100 * i / N)}%`)
         // can't wait here at the moment, or every single message will be sent individually
-        // const ydocRemote = server.ydb.getYdoc(owner, collection, 'doc-' + i)
+        // const ydocRemote = server.ystream.getYdoc(owner, collection, 'doc-' + i)
         // await ydocRemote.whenLoaded
         // await helpers.waitDocsSynced(ydoc, ydocRemote)
       }
@@ -134,7 +134,7 @@ export const testPerformanceSyncingManyDocs = async tc => {
     }
     const lastClientDoc = collection1.getYdoc('doc-' + (N - 1))
     await lastClientDoc.whenLoaded
-    const lastServerDoc = server.ydb.getCollection(owner, collection).getYdoc('doc-' + (N - 1))
+    const lastServerDoc = server.ystream.getCollection(owner, collection).getYdoc('doc-' + (N - 1))
     await lastServerDoc.whenLoaded
     await helpers.waitDocsSynced(lastClientDoc, lastServerDoc)
     t.assert(lastServerDoc.getMap().get('i') === N - 1)
@@ -142,7 +142,7 @@ export const testPerformanceSyncingManyDocs = async tc => {
   const [{ collection: collection2 }] = await th.createClients(1)
   await t.measureTimeAsync(`Sync ${N} documents with content from server`, async () => {
     const lastClientDoc = collection2.getYdoc('doc-' + (N - 1))
-    const lastServerDoc = server.ydb.getCollection(owner, collection).getYdoc('doc-' + (N - 1))
+    const lastServerDoc = server.ystream.getCollection(owner, collection).getYdoc('doc-' + (N - 1))
     await lastServerDoc.whenLoaded
     await helpers.waitDocsSynced(lastClientDoc, lastServerDoc)
     t.assert(lastClientDoc.getMap().get('i') === N - 1)

@@ -13,22 +13,22 @@ import * as operations from './operations.js'
 import * as utils from './utils.js'
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
-import { emitOpsEvent } from './ydb.js'
+import { emitOpsEvent } from './ystream.js'
 import * as authorization from './api/authorization.js'
 import * as protocol from './protocol.js'
 
 /**
- * @typedef {import('./ydb.js').Ydb} Ydb
+ * @typedef {import('./ystream.js').Ystream} Ystream
  */
 
 /**
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {number} startClock
  * @param {Uint8Array?} owner
  * @param {string?} collection
  * @return {ReadableStream<{ messages: Array<dbtypes.OpValue|Uint8Array>, origin: any }>}
  */
-export const createOpsReader = (ydb, startClock, owner, collection) => {
+export const createOpsReader = (ystream, startClock, owner, collection) => {
   let nextClock = startClock
   /**
    * @type {((ops: Array<dbtypes.OpValue>, origin: any) => void) | null}
@@ -51,7 +51,7 @@ export const createOpsReader = (ydb, startClock, owner, collection) => {
     async pull (controller) {
       if (registeredListener) return
       console.log('desired size: ', controller.desiredSize, { nextClock })
-      return ydb.db.transact(async tr => {
+      return ystream.db.transact(async tr => {
         do {
           /**
            * @type {Array<dbtypes.OpValue<operations.OpTypes>>}
@@ -65,7 +65,7 @@ export const createOpsReader = (ydb, startClock, owner, collection) => {
             })
             ops = colEntries.map(entry => {
               entry.value.localClock = entry.fkey.v
-              if (entry.value.client === ydb.clientid) {
+              if (entry.value.client === ystream.clientid) {
                 entry.value.clock = entry.fkey.v
               }
               return entry.value
@@ -81,7 +81,7 @@ export const createOpsReader = (ydb, startClock, owner, collection) => {
             })
             ops = entries.map(entry => {
               entry.value.localClock = entry.key.v
-              if (entry.value.client === ydb.clientid) {
+              if (entry.value.client === ystream.clientid) {
                 entry.value.clock = entry.key.v
               }
               return entry.value
@@ -94,10 +94,10 @@ export const createOpsReader = (ydb, startClock, owner, collection) => {
             }
           }
           if (ops.length === 0) {
-            if (ydb._eclock == null && nextClock !== 0) {
-              ydb._eclock = nextClock
+            if (ystream._eclock == null && nextClock !== 0) {
+              ystream._eclock = nextClock
             }
-            if (ydb._eclock === null || nextClock >= ydb._eclock) {
+            if (ystream._eclock === null || nextClock >= ystream._eclock) {
               console.log('sending synced step')
               controller.enqueue({
                 messages: [
@@ -112,7 +112,7 @@ export const createOpsReader = (ydb, startClock, owner, collection) => {
                 origin: 'db'
               })
               registeredListener = true
-              ydb.on('ops', /** @type {(ops: Array<dbtypes.OpValue>) => void} */ (listener))
+              ystream.on('ops', /** @type {(ops: Array<dbtypes.OpValue>) => void} */ (listener))
               break
             }
           }
@@ -123,7 +123,7 @@ export const createOpsReader = (ydb, startClock, owner, collection) => {
       })
     },
     cancel (_reason) {
-      ydb.off('ops', /** @type {(ops: Array<dbtypes.OpValue>) => void} */ (listener))
+      ystream.off('ops', /** @type {(ops: Array<dbtypes.OpValue>) => void} */ (listener))
     }
   }, {
     highWaterMark: 200,
@@ -135,14 +135,14 @@ export const createOpsReader = (ydb, startClock, owner, collection) => {
 }
 
 /**
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
  */
-export const getUnsyncedDocs = (ydb, owner, collection) => ydb.db.transact(async tr => {
+export const getUnsyncedDocs = (ystream, owner, collection) => ystream.db.transact(async tr => {
   const ud = await tr.tables.unsyncedDocs.getKeys({ start: new dbtypes.UnsyncedKey(owner, collection, ''), end: new dbtypes.UnsyncedKey(owner, collection, null) })
   const ds = await promise.all(ud.map(async u => {
-    const np = await getDocOpsLast(ydb, owner, collection, /** @type {string} */ (u.doc), operations.OpNoPermissionType)
+    const np = await getDocOpsLast(ystream, owner, collection, /** @type {string} */ (u.doc), operations.OpNoPermissionType)
     if (np == null) {
       await tr.tables.unsyncedDocs.remove(u)
     }
@@ -154,29 +154,29 @@ export const getUnsyncedDocs = (ydb, owner, collection) => ydb.db.transact(async
 /**
  * @template {operations.OpTypes} OP
  * @template {{ value: dbtypes.OpValue<OP>, fkey: isodb.AutoKey }} UPDATE
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {Array<UPDATE>} updates
  * @return {Array<UPDATE>}
  */
-const _updateOpClocksHelper = (ydb, updates) => updates.map(update => {
+const _updateOpClocksHelper = (ystream, updates) => updates.map(update => {
   update.value.localClock = update.fkey.v
-  if (update.value.client === ydb.clientid) {
+  if (update.value.client === ystream.clientid) {
     update.value.clock = update.fkey.v
   }
   return update
 })
 
 /**
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {number} clock
  */
-export const getOps = async (ydb, clock) => {
-  const ops = await ydb.db.transact(tr =>
+export const getOps = async (ystream, clock) => {
+  const ops = await ystream.db.transact(tr =>
     tr.tables.oplog.getEntries({ start: new isodb.AutoKey(clock) })
   )
   return utils.mergeOps(ops.map(update => {
     update.value.localClock = update.key.v
-    if (update.value.client === ydb.clientid) {
+    if (update.value.client === ystream.clientid) {
       update.value.clock = update.key.v
     }
     return update.value
@@ -184,24 +184,24 @@ export const getOps = async (ydb, clock) => {
 }
 
 /**
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {number} clock
  */
-export const getCollectionOps = async (ydb, owner, collection, clock) => {
-  const ops = await ydb.db.transact(tr =>
+export const getCollectionOps = async (ystream, owner, collection, clock) => {
+  const ops = await ystream.db.transact(tr =>
     tr.tables.oplog.indexes.collection.getEntries({
       start: new dbtypes.CollectionKey(owner, collection, clock),
       end: new dbtypes.CollectionKey(owner, collection, number.HIGHEST_UINT32)
     })
   )
-  return utils.mergeOps(_updateOpClocksHelper(ydb, ops).map(entry => entry.value), clock === 0)
+  return utils.mergeOps(_updateOpClocksHelper(ystream, ops).map(entry => entry.value), clock === 0)
 }
 
 /**
  * @template {operations.OpTypeIds} TYPE
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {string} doc
@@ -209,19 +209,19 @@ export const getCollectionOps = async (ydb, owner, collection, clock) => {
  * @param {number} clock
  * @return {Promise<Array<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>>>}
  */
-export const getDocOpsEntries = async (ydb, owner, collection, doc, type, clock) => {
-  const entries = await ydb.db.transact(tr =>
+export const getDocOpsEntries = async (ystream, owner, collection, doc, type, clock) => {
+  const entries = await ystream.db.transact(tr =>
     tr.tables.oplog.indexes.doc.getEntries({
       start: new dbtypes.DocKey(type, owner, collection, doc, clock),
       end: new dbtypes.DocKey(type, owner, collection, doc, number.HIGHEST_UINT32)
     })
   )
-  return /** @type {Array<dbtypes.OpValue<any>>} */ (_updateOpClocksHelper(ydb, entries).map(entry => entry.value))
+  return /** @type {Array<dbtypes.OpValue<any>>} */ (_updateOpClocksHelper(ystream, entries).map(entry => entry.value))
 }
 
 /**
  * @template {operations.OpTypeIds} TYPE
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {string} doc
@@ -229,27 +229,27 @@ export const getDocOpsEntries = async (ydb, owner, collection, doc, type, clock)
  * @param {number} clock
  * @return {Promise<Array<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>>>}
  */
-export const getDocOps = async (ydb, owner, collection, doc, type, clock) => {
-  const entries = await ydb.db.transact(tr =>
+export const getDocOps = async (ystream, owner, collection, doc, type, clock) => {
+  const entries = await ystream.db.transact(tr =>
     tr.tables.oplog.indexes.doc.getEntries({
       start: new dbtypes.DocKey(type, owner, collection, doc, clock),
       end: new dbtypes.DocKey(type, owner, collection, doc, number.HIGHEST_UINT32)
     })
   )
-  return /** @type {Array<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>>} */ (_updateOpClocksHelper(ydb, entries).map(entry => entry.value))
+  return /** @type {Array<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>>} */ (_updateOpClocksHelper(ystream, entries).map(entry => entry.value))
 }
 
 /**
  * @template {operations.OpTypeIds} TYPE
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {string} doc
  * @param {TYPE} type
  * @return {Promise<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>|null>}
  */
-export const getDocOpsLast = async (ydb, owner, collection, doc, type) => {
-  const entries = await ydb.db.transact(tr =>
+export const getDocOpsLast = async (ystream, owner, collection, doc, type) => {
+  const entries = await ystream.db.transact(tr =>
     tr.tables.oplog.indexes.doc.getEntries({
       start: new dbtypes.DocKey(type, owner, collection, doc, 0),
       end: new dbtypes.DocKey(type, owner, collection, doc, number.HIGHEST_UINT32),
@@ -257,32 +257,32 @@ export const getDocOpsLast = async (ydb, owner, collection, doc, type) => {
       reverse: true
     })
   )
-  return /** @type {dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>} */ (_updateOpClocksHelper(ydb, entries)[0].value) || null
+  return /** @type {dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>} */ (_updateOpClocksHelper(ystream, entries)[0].value) || null
 }
 
 /**
  * @template {operations.OpTypeIds} TYPE
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {string} doc
  * @param {TYPE} type
  * @return {Promise<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>|null>}
  */
-export const getDocOpsMerged = (ydb, owner, collection, doc, type) => getDocOps(ydb, owner, collection, doc, type, 0).then(ops => utils.mergeOps(ops, false)[0])
+export const getDocOpsMerged = (ystream, owner, collection, doc, type) => getDocOps(ystream, owner, collection, doc, type, 0).then(ops => utils.mergeOps(ops, false)[0])
 
 /**
  * @template {operations.OpTypeIds} TYPE
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {string} doc
  * @param {TYPE} type
  * @return {Promise<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>|null>}
  */
-export const mergeDocOps = (ydb, owner, collection, doc, type) =>
-  ydb.db.transact(async tr => {
-    const merged = await getDocOpsMerged(ydb, owner, collection, doc, type)
+export const mergeDocOps = (ystream, owner, collection, doc, type) =>
+  ystream.db.transact(async tr => {
+    const merged = await getDocOpsMerged(ystream, owner, collection, doc, type)
     tr.tables.oplog.indexes.doc.removeRange({
       start: new dbtypes.DocKey(type, owner, collection, doc, 0),
       end: new dbtypes.DocKey(type, owner, collection, doc, number.HIGHEST_UINT32),
@@ -314,26 +314,26 @@ const filterDuplicateNoPermIndexes = noperms => {
  * Returns up to N documents that we don't have permission to. Only the first entry for each doc is
  * returned.
  *
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
  * @return {Promise<Array<dbtypes.DocKey>>}
  */
-export const getNoPerms = async (ydb, owner, collection) =>
-  ydb.db.transact(tr =>
+export const getNoPerms = async (ystream, owner, collection) =>
+  ystream.db.transact(tr =>
     tr.tables.oplog.indexes.doc.getKeys({ prefix: { type: operations.OpNoPermissionType, owner, collection } })
       .then(ks => filterDuplicateNoPermIndexes(ks || []))
   )
 
 /**
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {number} clientid
  * @param {Uint8Array?} owner
  * @param {string?} collection
  */
-export const getClock = async (ydb, clientid, owner, collection) =>
-  ydb.db.transact(async tr => {
-    if (ydb.clientid === clientid) {
+export const getClock = async (ystream, clientid, owner, collection) =>
+  ystream.db.transact(async tr => {
+    if (ystream.clientid === clientid) {
       const latestEntry = await tr.tables.oplog.getKeys({
         end: number.HIGHEST_UINT32, // @todo change to uint
         reverse: true,
@@ -354,16 +354,16 @@ export const getClock = async (ydb, clientid, owner, collection) =>
 /**
  * Confirm that a all updates of a doc/collection/* from a client have been received.
  *
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {number} clientid
  * @param {Uint8Array?} owner
  * @param {string?} collection
  * @param {number} newClock
  * @param {number} localClock
  */
-export const confirmClientClock = async (ydb, clientid, owner, collection, newClock, localClock) => {
-  ydb.db.transact(async tr => {
-    const currClock = await getClock(ydb, clientid, owner, collection)
+export const confirmClientClock = async (ystream, clientid, owner, collection, newClock, localClock) => {
+  ystream.db.transact(async tr => {
+    const currClock = await getClock(ystream, clientid, owner, collection)
     if (currClock < newClock) {
       tr.tables.clocks.set(new dbtypes.ClocksKey(clientid, owner, collection), new dbtypes.ClientClockValue(newClock, localClock))
     }
@@ -371,29 +371,29 @@ export const confirmClientClock = async (ydb, clientid, owner, collection, newCl
 }
 
 /**
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {string} doc
  * @param {operations.OpTypes} opv
  */
-export const addOp = async (ydb, owner, collection, doc, opv) => {
-  const op = await ydb.db.transact(async tr => {
-    const op = new dbtypes.OpValue(ydb.clientid, 0, owner, collection, doc, opv)
+export const addOp = async (ystream, owner, collection, doc, opv) => {
+  const op = await ystream.db.transact(async tr => {
+    const op = new dbtypes.OpValue(ystream.clientid, 0, owner, collection, doc, opv)
     const key = await tr.tables.oplog.add(op)
     op.clock = key.v
     op.localClock = key.v
     tr.tables.clocks.set(new dbtypes.ClocksKey(op.client, owner, collection), new dbtypes.ClientClockValue(op.clock, op.clock))
     return op
   })
-  emitOpsEvent(ydb, [op], ydb)
+  emitOpsEvent(ystream, [op], ystream)
 }
 
 /**
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  */
-export const getClocks = ydb =>
-  ydb.db.transactReadonly(async tr => {
+export const getClocks = ystream =>
+  ystream.db.transactReadonly(async tr => {
     const entries = await tr.tables.clocks.getEntries({})
     /**
      * @type {Map<string,Map<number,dbtypes.ClientClockValue>>}
@@ -405,24 +405,24 @@ export const getClocks = ydb =>
     const lastKey = await tr.tables.oplog.getKeys({ reverse: true, limit: 1 })
     if (lastKey.length >= 0) {
       collectionClocks.forEach(cls => {
-        cls.set(ydb.clientid, new dbtypes.ClientClockValue(lastKey[0].v, lastKey[0].v))
+        cls.set(ystream.clientid, new dbtypes.ClientClockValue(lastKey[0].v, lastKey[0].v))
       })
     }
     return collectionClocks
   })
 
 /**
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {Array<dbtypes.OpValue>} ops
  * @param {dbtypes.UserIdentity} user
  * @param {any} origin
  */
-export const applyRemoteOps = async (ydb, ops, user, origin) => {
+export const applyRemoteOps = async (ystream, ops, user, origin) => {
   /**
    * @type {Array<dbtypes.OpValue<any>>}
    */
   const filteredOpsPermsChecked = []
-  await ydb.db.transact(async tr => {
+  await ystream.db.transact(async tr => {
     /**
      * Maps from encoded(collection/doc/clientid) to clock
      * @type {Map<string,number>}
@@ -436,14 +436,14 @@ export const applyRemoteOps = async (ydb, ops, user, origin) => {
     const encodeClocksKey = (client, owner, collection) => buffer.toBase64(encoding.encode(encoder => new dbtypes.ClocksKey(client, owner, collection).encode(encoder)))
     // wait for all clock requests
     await promise.all(array.uniqueBy(ops, op => op.client).map(async op => {
-      const clock = await getClock(ydb, op.client, op.owner, op.collection)
+      const clock = await getClock(ystream, op.client, op.owner, op.collection)
       clock > 0 && clocks.set(encodeClocksKey(op.client, op.owner, op.collection), clock)
     }))
     /**
      * @type {Map<string,dbtypes.ClientClockValue>}
      */
     const clientClockEntries = new Map()
-    const filteredOps = ops.filter(op => op.client !== ydb.clientid && op.clock > (clocks.get(encodeClocksKey(op.client, op.owner, op.collection)) || -1))
+    const filteredOps = ops.filter(op => op.client !== ystream.clientid && op.clock > (clocks.get(encodeClocksKey(op.client, op.owner, op.collection)) || -1))
     /**
      * @type {Map<string,Map<string,Map<string,boolean>>>}
      */
@@ -458,12 +458,12 @@ export const applyRemoteOps = async (ydb, ops, user, origin) => {
         })
       } else {
         return promise.all(array.from(collections.entries()).map(async ([collectionName, docs]) => {
-          const hasCollectionAccess = await authorization.hasWriteAccess(ydb, owner, collectionName, '*', user)
+          const hasCollectionAccess = await authorization.hasWriteAccess(ystream, owner, collectionName, '*', user)
           if (hasCollectionAccess) {
             docs.set('*', true)
           } else {
             await promise.all(array.from(docs.keys()).map(
-              docName => authorization.hasWriteAccess(ydb, owner, collectionName, docName, user).then(hasWriteAccess => docs.set(docName, hasWriteAccess))
+              docName => authorization.hasWriteAccess(ystream, owner, collectionName, docName, user).then(hasWriteAccess => docs.set(docName, hasWriteAccess))
             ))
           }
         }))
@@ -478,7 +478,7 @@ export const applyRemoteOps = async (ydb, ops, user, origin) => {
         clientClockEntries.set(encodeClocksKey(op.client, op.owner, op.collection), new dbtypes.ClientClockValue(op.clock, op.localClock))
         filteredOpsPermsChecked.push(op)
       } else {
-        console.log('Not applying op because of missing permission', op, ydb.syncsEverything, user.hash, user.isTrusted)
+        console.log('Not applying op because of missing permission', op, ystream.syncsEverything, user.hash, user.isTrusted)
       }
     }))
     clientClockEntries.forEach((clockValue, encClocksKey) => {
@@ -486,7 +486,7 @@ export const applyRemoteOps = async (ydb, ops, user, origin) => {
       tr.tables.clocks.set(clocksKey, clockValue)
     })
   })
-  emitOpsEvent(ydb, filteredOpsPermsChecked, origin)
+  emitOpsEvent(ystream, filteredOpsPermsChecked, origin)
   // @todo only apply doc ops to ydocs if sender has write permissions
   /**
    * @type {Map<string, Map<string, Map<string, Array<dbtypes.OpValue>>>>}
@@ -498,7 +498,7 @@ export const applyRemoteOps = async (ydb, ops, user, origin) => {
   sorted.forEach((collections, owner) => {
     // @todo check if this is reached
     collections.forEach((col, colname) => {
-      const docs = ydb.collections.get(owner)?.get(colname)?.docs
+      const docs = ystream.collections.get(owner)?.get(colname)?.docs
       if (docs) {
         col.forEach((updates, docname) => {
           const docupdates = utils.filterYjsUpdateOps(updates)
@@ -516,8 +516,8 @@ export const applyRemoteOps = async (ydb, ops, user, origin) => {
               // @todo this could use DocKey encoding
               // @todo could use more efficient encoding - allow Uint8Array in lib0/bc
               // @todo this should be generated by a function
-              const bcroom = `ydb#${ydb.dbname}#${owner}#${colname}#${docname}`
-              bc.publish(bcroom, buffer.toBase64(mergedUpdate), ydb)
+              const bcroom = `ystream#${ystream.dbname}#${owner}#${colname}#${docname}`
+              bc.publish(bcroom, buffer.toBase64(mergedUpdate), ystream)
             }
             /* c8 ignore end */
           }

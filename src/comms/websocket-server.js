@@ -21,7 +21,7 @@ import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import * as protocol from '../protocol.js'
 import * as comm from '../comm.js' // eslint-disable-line
-import * as ydb from '../index.js'
+import * as Ystream from '../index.js'
 import * as promise from 'lib0/promise'
 import * as error from 'lib0/error'
 import * as webcrypto from 'lib0/webcrypto'
@@ -40,7 +40,7 @@ const _log = logging.createModuleLogger('@y/stream/websocket')
  * @param {string} type
  * @param {...any} args
  */
-const log = (comm, type, ...args) => _log(logging.PURPLE, `(local=${comm.ydb.clientid.toString(36).slice(0, 4)},remote=${comm.clientid.toString(36).slice(0, 4)}) `, logging.ORANGE, '[' + type + '] ', logging.GREY, ...args.map(arg => typeof arg === 'function' ? arg() : arg))
+const log = (comm, type, ...args) => _log(logging.PURPLE, `(local=${comm.ystream.clientid.toString(36).slice(0, 4)},remote=${comm.clientid.toString(36).slice(0, 4)}) `, logging.ORANGE, '[' + type + '] ', logging.GREY, ...args.map(arg => typeof arg === 'function' ? arg() : arg))
 
 /**
  * @implements comm.Comm
@@ -49,11 +49,11 @@ const log = (comm, type, ...args) => _log(logging.PURPLE, `(local=${comm.ydb.cli
 class WSClient extends observable.ObservableV2 {
   /**
    * @param {uws.WebSocket<{ client: WSClient }>} ws
-   * @param {ydb.Ydb} ydb
+   * @param {Ystream.Ystream} ystream
    */
-  constructor (ws, ydb) {
+  constructor (ws, ystream) {
     super()
-    this.ydb = ydb
+    this.ystream = ystream
     this.clientid = -1
     /**
      * @type {import('../dbtypes.js').UserIdentity|null}
@@ -113,7 +113,7 @@ class WSClient extends observable.ObservableV2 {
     })
     this.on('authenticated', async () => {
       const encoder = encoding.createEncoder()
-      const clock = await actions.getClock(ydb, this.clientid, null, null)
+      const clock = await actions.getClock(ystream, this.clientid, null, null)
       protocol.writeRequestAllOps(encoder, clock)
       this.send(encoding.toUint8Array(encoder))
     })
@@ -175,8 +175,8 @@ class WSClient extends observable.ObservableV2 {
  * @param {boolean} [options.acceptNewUsers]
  * @param {{ user: dbtypes.UserIdentity, privateKey: CryptoKey }} [options.identity]
  */
-export const createWSServer = async ({ port = 9000, dbname = '.ydb-websocket-server', acceptNewUsers = true, identity } = {}) => {
-  const db = await ydb.openYdb(dbname, { acceptNewUsers, syncsEverything: true })
+export const createWSServer = async ({ port = 9000, dbname = '.ystream-websocket-server', acceptNewUsers = true, identity } = {}) => {
+  const db = await Ystream.open(dbname, { acceptNewUsers, syncsEverything: true })
   const server = new WSServer(db, port)
   if (!db.isAuthenticated) {
     if (identity) {
@@ -192,12 +192,15 @@ export const createWSServer = async ({ port = 9000, dbname = '.ydb-websocket-ser
 
 export class WSServer {
   /**
-   * @param {ydb.Ydb} ydb
+   * @param {Ystream.Ystream} ystream
    * @param {number} port
    */
-  constructor (ydb, port) {
-    this.ydb = ydb
-    this.ready = ydb.whenAuthenticated.then(() => promise.create((resolve, reject) => {
+  constructor (ystream, port) {
+    /**
+     * @type {Ystream.Ystream}
+     */
+    this.ystream = ystream
+    this.ready = ystream.whenAuthenticated.then(() => promise.create((resolve, reject) => {
       console.log('starting websocket server')
       uws.App({}).ws('/*', /** @type {uws.WebSocketBehavior<{ client: WSClient }>} */ ({
         /* Options */
@@ -206,17 +209,17 @@ export class WSServer {
         idleTimeout: 60,
         /* Handlers */
         open: (ws) => {
-          const client = new WSClient(ws, ydb)
+          const client = new WSClient(ws, ystream)
           ws.getUserData().client = client
           client.send(encoding.encode(encoder => {
-            protocol.writeInfo(encoder, ydb, client)
+            protocol.writeInfo(encoder, ystream, client)
           }))
         },
         message: (ws, message) => {
           const decoder = decoding.createDecoder(new Uint8Array(message.slice(0))) // copy buffer because uws will reuse the memory space
           const client = ws.getUserData().client
           client.queueMessage(async (encoder) => {
-            await protocol.readMessage(encoder, decoder, ydb, client)
+            await protocol.readMessage(encoder, decoder, ystream, client)
             return false
           })
         },

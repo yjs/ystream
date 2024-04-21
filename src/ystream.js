@@ -13,10 +13,10 @@ import * as utils from './utils.js'
 import * as error from 'lib0/error'
 
 /**
- * @typedef {Object} YdbConf
- * @property {Array<import('./comm.js').CommConfiguration>} [YdbConf.comms]
- * @property {boolean} [YdbConf.acceptNewUsers]
- * @property {boolean} [YdbConf.syncsEverything]
+ * @typedef {Object} YstreamConf
+ * @property {Array<import('./comm.js').CommConfiguration>} [YstreamConf.comms]
+ * @property {boolean} [YstreamConf.acceptNewUsers]
+ * @property {boolean} [YstreamConf.syncsEverything]
  */
 
 /**
@@ -26,80 +26,46 @@ import * as error from 'lib0/error'
 const _sortOpsHelper = (a, b) => a.localClock - b.localClock
 
 /**
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {Array<dbtypes.OpValue>} ops
  * @param {any} origin
  */
-const _emitOpsEvent = (ydb, ops, origin) => {
+const _emitOpsEvent = (ystream, ops, origin) => {
   if (ops.length === 0) {
     return
   }
-  const eclock = ydb._eclock
+  const eclock = ystream._eclock
   ops.sort(_sortOpsHelper)
   if (eclock == null || ops[0].localClock === eclock) {
-    ydb.emit('ops', [ops, origin, true])
-    ydb._eclock = ops[ops.length - 1].localClock + 1
+    ystream.emit('ops', [ops, origin, true])
+    ystream._eclock = ops[ops.length - 1].localClock + 1
   } else {
     error.unexpectedCase()
   }
-  // the below code needs to be refactored
-  // ydb._eops.push(...ops)
-  // if (eclock != null && ops[0].localClock > eclock) {
-  //   return
-  // }
-  // if (ydb._eev == null) {
-  //   ydb._eev = eventloop.timeout(0, () => {
-  //     // @TODO emit some event here so that other threads pull the op
-  //     const eops = ydb._eops
-  //     eops.sort(_sortOpsHelper)
-  //     let i = 0
-  //     if (ydb._eclock == null) ydb._eclock = eops[0].localClock
-  //     while (i < eops.length) {
-  //       const opclock = eops[i].localClock
-  //       if (opclock === ydb._eclock) {
-  //         ydb._eclock++
-  //         i++
-  //       } else if (opclock < /** @type {number} */ (ydb._eclock)) {
-  //         eops.splice(i, 1)
-  //       } else {
-  //         break
-  //       }
-  //     }
-  //     let opsToEmit
-  //     if (i === eops.length) {
-  //       opsToEmit = eops
-  //       ydb._eops = []
-  //     } else {
-  //       opsToEmit = eops.splice(0, i) // this also keeps the ops in ydb._eops
-  //     }
-  //     if (opsToEmit.length > 0) ydb.emit('ops', [opsToEmit, true])
-  //     ydb._eev = null
-  //   })
-  // }
 }
 
 /**
- * @param {Ydb} ydb
+ * @param {Ystream} ystream
  * @param {Array<dbtypes.OpValue>} ops
  * @param {any} origin
  */
-export const emitOpsEvent = (ydb, ops, origin) => {
+export const emitOpsEvent = (ystream, ops, origin) => {
   if (ops.length > 0) {
-    _emitOpsEvent(ydb, ops, origin)
-    bc.publish('@y/stream#' + ydb.dbname, ops.map(op => op.localClock), ydb)
+    _emitOpsEvent(ystream, ops, origin)
+    bc.publish('@y/stream#' + ystream.dbname, ops.map(op => op.localClock), ystream)
   }
 }
 
 /**
  * @extends ObservableV2<{ sync:function():void, ops:function(Array<dbtypes.OpValue>,any,boolean):void, authenticate:function():void, "collection-opened":(collection:Collection)=>void }>
  */
-export class Ydb extends ObservableV2 {
+export class Ystream extends ObservableV2 {
   /**
    * @param {string} dbname
    * @param {isodb.IDB<typeof db.def>} _db
    * @param {dbtypes.UserIdentity|null} user
    * @param {dbtypes.DeviceClaim|null} deviceClaim
-   * @param {YdbConf} conf
+   * @param {YstreamConf} conf
    */
   constructor (dbname, _db, user, deviceClaim, { comms = [], acceptNewUsers = false, syncsEverything = false } = {}) {
     super()
@@ -192,7 +158,7 @@ export class Ydb extends ObservableV2 {
  */
 export class Collection extends ObservableV2 {
   /**
-   * @param {Ydb} stream
+   * @param {Ystream} stream
    * @param {string} owner
    * @param {string} collection
    */

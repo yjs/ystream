@@ -9,7 +9,7 @@ import * as observable from 'lib0/observable'
 // @todo rename all interfacses to have I* prefix.
 
 /**
- * @typedef {import('./ydb.js').Ydb} Ydb
+ * @typedef {import('./ystream.js').Ystream} Ystream
  */
 
 /**
@@ -80,10 +80,10 @@ export class CommHandler {
  */
 export class CommConfiguration {
   /**
-   * @param {Ydb} _ydb
+   * @param {Ystream} _ystream
    * @return {CommHandler}
    */
-  init (_ydb) {
+  init (_ystream) {
     error.methodUnimplemented()
   }
 }

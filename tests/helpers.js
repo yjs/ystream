@@ -1,6 +1,6 @@
 import * as promise from 'lib0/promise'
 import * as t from 'lib0/testing' // eslint-disable-line
-import * as Ydb from '../src/index.js'
+import * as Ystream from '../src/index.js'
 import * as Y from 'yjs'
 import * as array from 'lib0/array'
 import * as wscomm from '../src/comms/websocket.js'
@@ -60,10 +60,10 @@ if (env.isNode) {
   } catch (e) {}
   const { createWSServer } = await import('../src/comms/websocket-server.js')
   server = await createWSServer({ dbname: `.test_dbs/${randTestRunName}-server`, identity: testServerIdentity })
-  await authentication.registerUser(server.ydb, testUser.user)
+  await authentication.registerUser(server.ystream, testUser.user)
   // @todo add roles and default permissions to colletcions
-  // await authorization.updateCollaborator(server.ydb, owner, 'c1', 'ydoc', testUser.user, 'admin')
-  console.log('server registered user hashes: ', await authentication.getAllRegisteredUserHashes(server.ydb))
+  // await authorization.updateCollaborator(server.ystream, owner, 'c1', 'ydoc', testUser.user, 'admin')
+  console.log('server registered user hashes: ', await authentication.getAllRegisteredUserHashes(server.ystream))
 }
 
 /**
@@ -75,18 +75,18 @@ export const emptyUpdate = Y.encodeStateAsUpdateV2(new Y.Doc())
 
 class TestClient {
   /**
-   * @param {Ydb.Ydb} ydb
+   * @param {Ystream.Ystream} ystream
    * @param {{ owner: string, collection: string }} collectionDef
    */
-  constructor (ydb, { owner, collection }) {
-    this.ydb = ydb
-    this.collection = ydb.getCollection(owner, collection)
+  constructor (ystream, { owner, collection }) {
+    this.ystream = ystream
+    this.collection = ystream.getCollection(owner, collection)
     this.doc1 = this.collection.getYdoc('ydoc')
   }
 
   async destroy () {
     this.doc1.destroy()
-    await promise.all([this.ydb.destroy()])
+    await promise.all([this.ystream.destroy()])
   }
 }
 
@@ -110,14 +110,14 @@ class TestScenario {
    */
   async createClient (_options = {}) {
     const dbname = `.test_dbs/${randTestRunName}-${this.name}-${this.cliNum++}`
-    await Ydb.deleteYdb(dbname)
-    const ydb = await Ydb.openYdb(dbname, {
+    await Ystream.remove(dbname)
+    const ystream = await Ystream.open(dbname, {
       comms: [new wscomm.WebSocketComm('ws://localhost:9000', [this.collectionDef])]
     })
     console.log('registering server', testServerIdentity.user, testServerIdentity.user.hash)
-    await authentication.registerUser(ydb, testServerIdentity.user, { isTrusted: true })
-    await authentication.setUserIdentity(ydb, testUser.user, await testUser.user.publicKey, testUser.privateKey)
-    const client = new TestClient(ydb, this.collectionDef)
+    await authentication.registerUser(ystream, testServerIdentity.user, { isTrusted: true })
+    await authentication.setUserIdentity(ystream, testUser.user, await testUser.user.publicKey, testUser.privateKey)
+    const client = new TestClient(ystream, this.collectionDef)
     this.clients.push(client)
     return client
   }

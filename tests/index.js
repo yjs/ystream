@@ -1,7 +1,7 @@
 import { runTests } from 'lib0/testing.js'
 import { isBrowser, isNode } from 'lib0/environment.js'
 import * as log from 'lib0/logging'
-import * as ydb from './ydb.tests.js'
+import * as ystream from './ystream.tests.js'
 import * as actions from './actions.tests.js'
 import * as authentication from './authentication.tests.js'
 
@@ -12,7 +12,7 @@ if (isBrowser) {
 
 runTests(/** @type {any} */ ({
   authentication,
-  ydb,
+  ystream,
   actions
 })).then(success => {
   /* istanbul ignore next 3 */
