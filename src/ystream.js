@@ -9,8 +9,9 @@ import * as random from 'lib0/random'
 import * as actions from './actions.js'
 import * as dbtypes from './dbtypes.js' // eslint-disable-line
 import * as bc from 'lib0/broadcastchannel'
-import * as utils from './utils.js'
 import * as error from 'lib0/error'
+import * as operations from './operations.js'
+import * as buffer from 'lib0/buffer'
 
 /**
  * @typedef {Object} YstreamConf
@@ -57,7 +58,7 @@ export const emitOpsEvent = (ystream, ops, origin) => {
 }
 
 /**
- * @extends ObservableV2<{ sync:function():void, ops:function(Array<dbtypes.OpValue>,any,boolean):void, authenticate:function():void, "collection-opened":(collection:Collection)=>void }>
+ * @extends ObservableV2<{ ops:function(Array<dbtypes.OpValue>,any,boolean):void, authenticate:function():void, "collection-opened":(collection:Collection)=>void }>
  */
 export class Ystream extends ObservableV2 {
   /**
@@ -79,15 +80,10 @@ export class Ystream extends ObservableV2 {
      * @type {Map<string,Map<string,Collection>>}
      */
     this.collections = new Map()
-    this.syncedCollections = new utils.CollectionsSet()
-    this.isSynced = false
     /**
      * Whether to sync all collections (usually only done by a server)
      */
     this.syncsEverything = syncsEverything
-    this.whenSynced = promise.create(resolve =>
-      this.once('sync', resolve)
-    )
     this.clientid = random.uint32()
     /**
      * @type {dbtypes.UserIdentity|null}
@@ -164,14 +160,18 @@ export class Collection extends ObservableV2 {
    */
   constructor (stream, owner, collection) {
     super()
-    this.stream = stream
+    this.ystream = stream
     this.owner = owner
+    this.ownerBin = buffer.fromBase64(owner)
     this.collection = collection
     /**
      * @type {Map<string, Set<Y.Doc>>}
      */
     this.docs = new Map()
     this.isSynced = false
+    this.whenSynced = promise.create(resolve =>
+      this.once('sync', resolve)
+    )
     stream.emit('collection-opened', [this])
   }
 
@@ -187,11 +187,29 @@ export class Collection extends ObservableV2 {
     ydoc.on('destroy', () => {
       docset.delete(ydoc)
     })
-    bindydoc(this.stream, this.owner, this.collection, docname, ydoc)
+    bindydoc(this.ystream, this.owner, this.collection, docname, ydoc)
     return ydoc
   }
 
+  /**
+   * @param {string} key
+   */
+  async getLww (key) {
+    const lww = await actions.getDocOpsMerged(this.ystream, this.ownerBin, this.collection, key, operations.OpLwwType)
+    return lww?.op.val
+  }
+
+  /**
+   * @param {string} key
+   * @param {any} val
+   */
+  async setLww (key, val) {
+    const lww = await actions.getDocOpsMerged(this.ystream, this.ownerBin, this.collection, key, operations.OpLwwType)
+    await actions.addOp(this.ystream, this.ownerBin, this.collection, key, new operations.OpLww(lww?.op.cnt || 0, val))
+    return lww?.op.val
+  }
+
   destroy () {
-    this.stream.collections.get(this.owner)?.delete(this.collection)
+    this.ystream.collections.get(this.owner)?.delete(this.collection)
   }
 }

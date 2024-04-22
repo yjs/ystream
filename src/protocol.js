@@ -96,14 +96,11 @@ const readSynced = async (_encoder, decoder, ystream, comm) => {
   decoding.readVarUint(decoder) // confirmed clock
   if (comm == null) return
   comm.synced.add(owner, collection)
-  ystream.syncedCollections.add(owner, collection)
-  if (ystream.isSynced) return
-  if (array.from(ystream.collections.entries()).every(([owner, cols]) => array.from(cols.keys()).every(cname => ystream.syncedCollections.has(owner, cname)))) {
-    ystream.isSynced = true
+  const ycol = ystream.getCollection(buffer.toBase64(owner), collection)
+  if (ycol != null && !ycol.isSynced) {
+    ycol.isSynced = true
+    ycol.emit('sync', [])
     log(ystream, comm, 'Synced', `synced "${collection}" .. emitted sync event`)
-    ystream.emit('sync', [])
-  } else {
-    log(ystream, comm, 'Synced', ` synced "${collection}" .. waiting for other collections`)
   }
 }
 
@@ -116,10 +113,13 @@ const readSynced = async (_encoder, decoder, ystream, comm) => {
 const readSyncedAll = async (_encoder, decoder, ystream, comm) => {
   decoding.readVarUint(decoder) // confirmed clock
   if (comm == null) return
-  if (ystream.isSynced) return
-  ystream.isSynced = true
+  ystream.collections.forEach(c => {
+    c.forEach(ycol => {
+      ycol.isSynced = true
+      ycol.emit('sync', [])
+    })
+  })
   log(ystream, comm, 'Synced', 'synced "*" collections .. emitted sync event')
-  ystream.emit('sync', [])
 }
 
 /**

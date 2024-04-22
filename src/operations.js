@@ -12,13 +12,14 @@ import * as array from 'lib0/array'
 export const OpYjsUpdateType = 0
 export const OpNoPermissionType = 1
 export const OpPermType = 2
+export const OpLwwType = 3
 
 /**
- * @typedef {OpYjsUpdateType | OpNoPermissionType | OpPermType} OpTypeIds
+ * @typedef {OpYjsUpdateType | OpNoPermissionType | OpPermType | OpLwwType } OpTypeIds
  */
 
 /**
- * @typedef {OpYjsUpdate | OpNoPermission | OpPerm} OpTypes
+ * @typedef {OpYjsUpdate | OpNoPermission | OpPerm | OpLww} OpTypes
  */
 
 /**
@@ -242,6 +243,52 @@ export class OpNoPermission {
 /**
  * @implements AbstractOp
  */
+export class OpLww {
+  /**
+   * @param {number} cnt
+   * @param {any} val
+   */
+  constructor (cnt, val) {
+    this.cnt = cnt
+    this.val = val
+  }
+
+  /**
+   * @return {OpLwwType}
+   */
+  get type () {
+    return OpLwwType
+  }
+
+  /**
+   * @param {encoding.Encoder} encoder
+   */
+  encode (encoder) {
+    encoding.writeVarUint(encoder, this.cnt)
+    encoding.writeAny(encoder, this.val)
+  }
+
+  /**
+   * @param {decoding.Decoder} decoder
+   * @return {OpLww}
+   */
+  static decode (decoder) {
+    return new OpLww(decoding.readVarUint(decoder), decoding.readAny(decoder))
+  }
+
+  /**
+   * @param {Array<import('./dbtypes.js').OpValue<OpLww>>} ops
+   * @param {boolean} gc
+   * @return {import('./dbtypes.js').OpValue<OpLww>}
+   */
+  static merge (ops, gc) {
+    return array.fold(ops, ops[0], (o1, o2) => (o1.op.cnt > o2.op.cnt || (o1.op.cnt === o2.op.cnt && o1.client > o2.client)) ? o1 : o2)
+  }
+}
+
+/**
+ * @implements AbstractOp
+ */
 export class OpYjsUpdate {
   /**
    * @param {Uint8Array} update
@@ -300,5 +347,6 @@ export class OpYjsUpdate {
 export const typeMap = {
   [OpYjsUpdateType]: OpYjsUpdate,
   [OpNoPermissionType]: OpNoPermission,
-  [OpPermType]: OpPerm
+  [OpPermType]: OpPerm,
+  [OpLwwType]: OpLww
 }

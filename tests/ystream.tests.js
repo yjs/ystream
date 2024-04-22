@@ -55,7 +55,7 @@ export const testComm = async tc => {
   const [{ ystream: ystream1, collection: collection1 }, { ystream: ystream2, collection: collection2 }] = await th.createClients(2)
   console.log('@y/stream1 user hashes: ', await authentication.getAllRegisteredUserHashes(ystream1))
   console.log('@y/stream2 user hashes: ', await authentication.getAllRegisteredUserHashes(ystream2))
-  await promise.all([ystream1.whenSynced, ystream2.whenSynced])
+  await promise.all([collection1.whenSynced, collection2.whenSynced])
   const ydoc1 = collection1.getYdoc('ydoc')
   ydoc1.getMap().set('k', 'v1')
   const ydoc2 = collection2.getYdoc('ydoc')
@@ -66,8 +66,8 @@ export const testComm = async tc => {
   t.compare(ydoc1.getMap().get('k'), 'v2')
   await helpers.waitDocsSynced(ydoc1, ydoc2)
   t.compare(ydoc2.getMap().get('k'), 'v2')
-  const { ystream: ystream3, collection: collection3 } = await th.createClient()
-  await ystream3.whenSynced
+  const { collection: collection3 } = await th.createClient()
+  await collection3.whenSynced
   const ydoc3 = collection3.getYdoc('ydoc')
   await ydoc3.whenLoaded
   t.compare(ydoc3.getMap().get('k'), 'v2')
@@ -147,4 +147,23 @@ export const testPerformanceSyncingManyDocs = async tc => {
     await helpers.waitDocsSynced(lastClientDoc, lastServerDoc)
     t.assert(lastClientDoc.getMap().get('i') === N - 1)
   })
+}
+
+/**
+ * Testing loading from the database.
+ *
+ * @param {t.TestCase} tc
+ */
+export const testLww = async tc => {
+  const th = await helpers.createTestScenario(tc)
+  const [{ collection: collection1 }, { collection: collection2 }] = await th.createClients(2)
+  await collection1.setLww('key', 'val1')
+  t.assert(await collection1.getLww('key') === 'val1')
+  await collection2.setLww('key', 'val2')
+  t.assert(await collection2.getLww('key') === 'val2')
+  while (true) {
+    if (await collection1.getLww('key') === await collection2.getLww('key')) break
+    await promise.wait(100)
+  }
+  t.info('lww value converged')
 }
