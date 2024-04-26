@@ -109,8 +109,9 @@ export class Ystream extends ObservableV2 {
     this._esub = bc.subscribe('@y/stream#' + this.dbname, /** @param {Array<number>} opids */ async (opids, origin) => {
       if (origin !== this) {
         console.log('received ops via broadcastchannel', opids[0])
-        const ops = await actions.getOps(this, opids[0])
-        _emitOpsEvent(this, ops, 'broadcastchannel')
+        // @todo reintroduce pulling from a database
+        // const ops = await actions.getOps(this, opids[0])
+        // _emitOpsEvent(this, ops, 'broadcastchannel')
       }
     })
     /**
@@ -189,6 +190,31 @@ export class Collection extends ObservableV2 {
     })
     bindydoc(this.ystream, this.owner, this.collection, docname, ydoc)
     return ydoc
+  }
+
+  /**
+   * @param {string} docname
+   */
+  async getParent (docname) {
+    const co = await actions.getDocOpsMerged(this.ystream, this.ownerBin, this.collection, docname, operations.OpChildOfType)
+    return co?.op.parent
+  }
+
+  /**
+   * @param {string} docname
+   * @param {string} parentDoc
+   */
+  async setParent (docname, parentDoc) {
+    const co = await actions.getDocOpsMerged(this.ystream, this.ownerBin, this.collection, docname, operations.OpChildOfType)
+    await actions.addOp(this.ystream, this.ownerBin, this.collection, docname, new operations.OpChildOf(co?.op.cnt || 0, parentDoc))
+    return co?.op.parent
+  }
+
+  /**
+   * @param {string} docname
+   */
+  getChildren (docname) {
+    return actions.getDocChildren(this.ystream, this.ownerBin, this.collection, docname)
   }
 
   /**

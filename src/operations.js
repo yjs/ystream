@@ -4,6 +4,8 @@ import * as error from 'lib0/error'
 import * as Y from 'yjs'
 import * as math from 'lib0/math'
 import * as array from 'lib0/array'
+import * as dbtypes from './dbtypes.js'
+import { mergeDocOps } from './actions.js'
 
 /**
  * @typedef {import('isodb').IEncodable} IEncodable
@@ -13,13 +15,14 @@ export const OpYjsUpdateType = 0
 export const OpNoPermissionType = 1
 export const OpPermType = 2
 export const OpLwwType = 3
+export const OpChildOfType = 4
 
 /**
- * @typedef {OpYjsUpdateType | OpNoPermissionType | OpPermType | OpLwwType } OpTypeIds
+ * @typedef {OpYjsUpdateType | OpNoPermissionType | OpPermType | OpLwwType | OpChildOfType } OpTypeIds
  */
 
 /**
- * @typedef {OpYjsUpdate | OpNoPermission | OpPerm | OpLww} OpTypes
+ * @typedef {OpYjsUpdate | OpNoPermission | OpPerm | OpLww | OpChildOf} OpTypes
  */
 
 /**
@@ -62,6 +65,26 @@ export class AbstractOp {
    * @return {import('./dbtypes.js').OpValue}
    */
   static merge (_ops, _gc) {
+    error.methodUnimplemented()
+  }
+
+  /**
+   * @param {import('./ystream.js').Ystream} _ystream
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('./dbtypes.js').OpValue} _op
+   * @return {Promise<void>|void}
+   */
+  integrate (_ystream, _tr, _op) {
+    error.methodUnimplemented()
+  }
+
+  /**
+   * @param {import('./ystream.js').Ystream} _ystream
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('./dbtypes.js').OpValue} _op
+   * @return {Promise<void>|void}
+   */
+  unintegrate (_ystream, _tr, _op) {
     error.methodUnimplemented()
   }
 }
@@ -157,6 +180,7 @@ export class OpPerm {
   }
 
   /**
+   * @todo maybe return ops that can safely be removed
    * @param {Array<import('./dbtypes.js').OpValue<OpPerm>>} ops
    * @param {boolean} _gc
    * @return {import('./dbtypes.js').OpValue<OpPerm>}
@@ -172,6 +196,22 @@ export class OpPerm {
     const lastOp = ops[ops.length - 1]
     lastOp.op = mergedOp
     return lastOp
+  }
+
+  /**
+   * @param {import('./ystream.js').Ystream} _ystream
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('./dbtypes.js').OpValue} _op
+   */
+  integrate (_ystream, _tr, _op) {
+  }
+
+  /**
+   * @param {import('./ystream.js').Ystream} _ystream
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('./dbtypes.js').OpValue} _op
+   */
+  unintegrate (_ystream, _tr, _op) {
   }
 }
 
@@ -238,6 +278,22 @@ export class OpNoPermission {
   static merge (ops, _gc) {
     return ops[ops.length - 1]
   }
+
+  /**
+   * @param {import('./ystream.js').Ystream} _ystream
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('./dbtypes.js').OpValue} _op
+   */
+  integrate (_ystream, _tr, _op) {
+  }
+
+  /**
+   * @param {import('./ystream.js').Ystream} _ystream
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('./dbtypes.js').OpValue} _op
+   */
+  unintegrate (_ystream, _tr, _op) {
+  }
 }
 
 /**
@@ -277,12 +333,99 @@ export class OpLww {
   }
 
   /**
+   * This returns the "last writer". There is no merging. The other updates (even the ones that
+   * happen "later"), can safely be removed without causing sync-issues.
+   *
    * @param {Array<import('./dbtypes.js').OpValue<OpLww>>} ops
-   * @param {boolean} gc
+   * @param {boolean} _gc
    * @return {import('./dbtypes.js').OpValue<OpLww>}
    */
-  static merge (ops, gc) {
+  static merge (ops, _gc) {
     return array.fold(ops, ops[0], (o1, o2) => (o1.op.cnt > o2.op.cnt || (o1.op.cnt === o2.op.cnt && o1.client > o2.client)) ? o1 : o2)
+  }
+
+  /**
+   * @param {import('./ystream.js').Ystream} _ystream
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('./dbtypes.js').OpValue} _op
+   */
+  integrate (_ystream, _tr, _op) {
+  }
+
+  /**
+   * @param {import('./ystream.js').Ystream} _ystream
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('./dbtypes.js').OpValue} _op
+   */
+  unintegrate (_ystream, _tr, _op) {
+  }
+}
+
+/**
+ * @implements AbstractOp
+ */
+export class OpChildOf {
+  /**
+   * @param {number} cnt
+   * @param {string} parent
+   */
+  constructor (cnt, parent) {
+    this.cnt = cnt
+    this.parent = parent
+  }
+
+  /**
+   * @return {OpChildOfType}
+   */
+  get type () {
+    return OpChildOfType
+  }
+
+  /**
+   * @param {encoding.Encoder} encoder
+   */
+  encode (encoder) {
+    encoding.writeVarUint(encoder, this.cnt)
+    encoding.writeVarString(encoder, this.parent)
+  }
+
+  /**
+   * @param {decoding.Decoder} decoder
+   * @return {OpChildOf}
+   */
+  static decode (decoder) {
+    return new OpChildOf(decoding.readVarUint(decoder), decoding.readVarString(decoder))
+  }
+
+  /**
+   * This works similarly to the lww merge.
+   *
+   * @param {Array<import('./dbtypes.js').OpValue<OpChildOf>>} ops
+   * @param {boolean} _gc
+   * @return {import('./dbtypes.js').OpValue<OpChildOf>}
+   */
+  static merge (ops, _gc) {
+    return array.fold(ops, ops[0], (o1, o2) => (o1.op.cnt > o2.op.cnt || (o1.op.cnt === o2.op.cnt && o1.client > o2.client)) ? o1 : o2)
+  }
+
+  /**
+   * @param {import('./ystream.js').Ystream} ystream
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
+   * @param {import('./dbtypes.js').OpValue} op
+   */
+  async integrate (ystream, tr, op) {
+    tr.tables.childDocs.set(new dbtypes.ParentKey(op.owner, op.collection, this.parent, op.doc, op.localClock), null)
+    // force that conflicts are unintegrated
+    await mergeDocOps(ystream, op.owner, op.collection, op.doc, this.type)
+  }
+
+  /**
+   * @param {import('./ystream.js').Ystream} _ystream
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
+   * @param {import('./dbtypes.js').OpValue} op
+   */
+  unintegrate (_ystream, tr, op) {
+    tr.tables.childDocs.remove(new dbtypes.ParentKey(op.owner, op.collection, op.doc, this.parent, op.localClock))
   }
 }
 
@@ -342,11 +485,28 @@ export class OpYjsUpdate {
     lastOp.op = new OpYjsUpdate(update)
     return lastOp
   }
+
+  /**
+   * @param {import('./ystream.js').Ystream} _ystream
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('./dbtypes.js').OpValue} _op
+   */
+  integrate (_ystream, _tr, _op) {
+  }
+
+  /**
+   * @param {import('./ystream.js').Ystream} _stream
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('./dbtypes.js').OpValue} _op
+   */
+  unintegrate (_stream, _tr, _op) {
+  }
 }
 
 export const typeMap = {
   [OpYjsUpdateType]: OpYjsUpdate,
   [OpNoPermissionType]: OpNoPermission,
   [OpPermType]: OpPerm,
-  [OpLwwType]: OpLww
+  [OpLwwType]: OpLww,
+  [OpChildOfType]: OpChildOf
 }

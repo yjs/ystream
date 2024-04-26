@@ -18,7 +18,7 @@ import * as ecdsa from 'lib0/crypto/ecdsa'
 /**
  * @todo "owner" could be mapped to an integer
  * @todo client should actually be a map to a deviceid
- * @template {operations.OpTypes} [OP=any]
+ * @template {operations.OpTypes|operations.AbstractOp} [OP=operations.AbstractOp]
  * @implements isodb.IEncodable
  */
 export class OpValue {
@@ -496,5 +496,60 @@ export class NoPermissionIndexKey {
     const doc = decoding.readVarString(decoder)
     const clock = decoding.readUint32BigEndian(decoder)
     return new NoPermissionIndexKey(owner, collection, doc, clock)
+  }
+}
+
+/**
+ * @implements isodb.IEncodable
+ */
+export class ParentKey {
+  /**
+   * @param {Uint8Array} owner
+   * @param {string} collection
+   * @param {string} parent
+   * @param {string} child
+   * @param {number} localClock
+   */
+  constructor (owner, collection, parent, child, localClock) {
+    this.owner = owner
+    this.collection = collection
+    this.parent = parent
+    this.child = child
+    this.localClock = localClock
+  }
+
+  /**
+   * @param {{ owner: Uint8Array, collection: string, parent: string }} prefix
+   */
+  static prefix ({ owner, collection, parent }) {
+    return encoding.encode(encoder => {
+      encoding.writeVarUint8Array(encoder, owner)
+      encoding.writeVarString(encoder, collection)
+      encoding.writeVarString(encoder, parent)
+    })
+  }
+
+  /**
+   * @param {encoding.Encoder} encoder
+   */
+  encode (encoder) {
+    encoding.writeVarUint8Array(encoder, this.owner)
+    encoding.writeVarString(encoder, this.collection)
+    encoding.writeVarString(encoder, this.parent)
+    encoding.writeTerminatedString(encoder, this.child)
+    encoding.writeVarUint(encoder, this.localClock)
+  }
+
+  /**
+   * @param {decoding.Decoder} decoder
+   * @return {isodb.IEncodable}
+   */
+  static decode (decoder) {
+    const owner = decoding.readVarUint8Array(decoder)
+    const collection = decoding.readVarString(decoder)
+    const doc = decoding.readVarString(decoder)
+    const child = decoding.readTerminatedString(decoder)
+    const localClock = decoding.readVarUint(decoder)
+    return new this(owner, collection, doc, child, localClock)
   }
 }

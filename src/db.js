@@ -37,6 +37,10 @@ export const def = {
         }
       }
     },
+    childDocs: {
+      key: dbtypes.ParentKey,
+      value: isodb.NoValue
+    },
     clocks: {
       key: dbtypes.ClocksKey,
       value: dbtypes.ClientClockValue

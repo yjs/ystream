@@ -31,6 +31,7 @@ const _mergeOpsHelper = (ops, gc) => {
 }
 
 /**
+ * @deprecated - remove this
  * @template {operations.OpTypes} OP
  * @param {Array<dbtypes.OpValue<OP>>} ops
  * @param {boolean} gc
@@ -57,6 +58,19 @@ export const mergeOps = (ops, gc) => {
     })
   })
   return mergedOps.reverse().sort((a, b) => a.localClock - b.localClock)
+}
+
+/**
+ * @template {operations.OpTypes|operations.AbstractOp} OP
+ * @param {Array<dbtypes.OpValue<OP>>} ops
+ * @param {boolean} gc
+ * @return {dbtypes.OpValue<OP>|null}
+ */
+export const merge = (ops, gc) => {
+  if (ops.length === 0) return null
+  return /** @type {dbtypes.OpValue<OP>} */ (
+    /** @type {typeof operations.AbstractOp} */ (operations.typeMap[ops[0].op.type]).merge(ops, gc)
+  )
 }
 
 /**

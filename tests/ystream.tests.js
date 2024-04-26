@@ -167,3 +167,21 @@ export const testLww = async tc => {
   }
   t.info('lww value converged')
 }
+
+/**
+ * Testing loading from the database.
+ *
+ * @param {t.TestCase} tc
+ */
+export const testFolderStructure = async tc => {
+  const th = await helpers.createTestScenario(tc)
+  const [{ collection: collection1 }] = await th.createClients(2)
+  await collection1.setParent('B', 'A')
+  await collection1.setParent('C', 'B')
+  await collection1.setParent('D', 'B')
+  t.assert(await collection1.getParent('B') === 'A')
+  t.assert(await collection1.getParent('D') === 'B')
+  t.assert(await collection1.getParent('C') === 'B')
+  t.compareArrays(await collection1.getChildren('A'), ['B'])
+  t.compareArrays(await collection1.getChildren('B'), ['C', 'D']) // should return in alphabetical order
+}

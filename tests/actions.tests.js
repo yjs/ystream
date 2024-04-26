@@ -1,30 +1,10 @@
 import * as t from 'lib0/testing'
 import * as utils from '../src/utils.js'
-import * as actions from '../src/actions.js'
 import * as operations from '../src/operations.js'
 import * as dbtypes from '../src/dbtypes.js'
-import { emptyUpdate, getDbName } from './helpers.js'
-import * as D from '../src/index.js'
+import { emptyUpdate } from './helpers.js'
 
 const testOwner = new Uint8Array([1, 2, 3])
-
-/**
- * @param {t.TestCase} tc
- */
-export const testBasic = async tc => {
-  const stream1 = await D.open(getDbName(tc))
-  actions.addOp(stream1, testOwner, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
-  actions.addOp(stream1, testOwner, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
-  actions.addOp(stream1, testOwner, 'collection', 'docname', new operations.OpYjsUpdate(emptyUpdate))
-  actions.addOp(stream1, testOwner, 'collection2', 'docname', new operations.OpYjsUpdate(emptyUpdate))
-  actions.addOp(stream1, testOwner, 'collection', 'docname2', new operations.OpYjsUpdate(emptyUpdate))
-  const docOps = await actions.getDocOps(stream1, testOwner, 'collection', 'docname', operations.OpYjsUpdateType, 0)
-  t.assert(docOps.length === 3)
-  const allOps = await actions.getOps(stream1, 0)
-  t.assert(allOps.length === 3) // because doc ops are merged
-  const collectionOps = await actions.getCollectionOps(stream1, testOwner, 'collection', 0)
-  t.assert(collectionOps.length === 2)
-}
 
 /**
  * @param {t.TestCase} _tc
