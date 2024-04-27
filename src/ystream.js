@@ -202,6 +202,13 @@ export class Collection extends ObservableV2 {
 
   /**
    * @param {string} docname
+   */
+  getDocPath (docname) {
+    return actions.getDocPath(this.ystream, this.ownerBin, this.collection, docname)
+  }
+
+  /**
+   * @param {string} docname
    * @param {string} parentDoc
    */
   async setParent (docname, parentDoc) {

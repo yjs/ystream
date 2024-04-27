@@ -184,4 +184,7 @@ export const testFolderStructure = async tc => {
   t.assert(await collection1.getParent('C') === 'B')
   t.compareArrays(await collection1.getChildren('A'), ['B'])
   t.compareArrays(await collection1.getChildren('B'), ['C', 'D']) // should return in alphabetical order
+  t.compareArrays(await collection1.getDocPath('A'), [])
+  t.compareArrays(await collection1.getDocPath('B'), ['A'])
+  t.compareArrays(await collection1.getDocPath('D'), ['A', 'B'])
 }

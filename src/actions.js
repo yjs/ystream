@@ -258,6 +258,28 @@ export const getDocChildren = async (ystream, owner, collection, parent) => {
 }
 
 /**
+ * @param {Ystream} ystream
+ * @param {Uint8Array} owner
+ * @param {string} collection
+ * @param {string} doc
+ * @return {Promise<Array<string>>}
+ */
+export const getDocPath = async (ystream, owner, collection, doc) => {
+  let currDoc = doc
+  /**
+   * @type {Array<string>}
+   */
+  const path = []
+  while (currDoc != null) {
+    const parentOp = await getDocOpsMerged(ystream, owner, collection, currDoc, operations.OpChildOfType)
+    if (parentOp == null) break
+    currDoc = parentOp.op.parent
+    path.unshift(currDoc)
+  }
+  return path
+}
+
+/**
  * @template {operations.OpTypeIds} TYPEID
  * @template {InstanceType<operations.typeMap[TYPEID]>} TYPE
  * @param {Ystream} ystream
