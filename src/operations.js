@@ -367,7 +367,7 @@ export class OpLww {
 export class OpChildOf {
   /**
    * @param {number} cnt
-   * @param {string} parent
+   * @param {string|null} parent
    */
   constructor (cnt, parent) {
     this.cnt = cnt
@@ -385,8 +385,9 @@ export class OpChildOf {
    * @param {encoding.Encoder} encoder
    */
   encode (encoder) {
+    encoding.writeUint8(encoder, this.parent === null ? 1 : 0)
     encoding.writeVarUint(encoder, this.cnt)
-    encoding.writeVarString(encoder, this.parent)
+    if (this.parent !== null) encoding.writeVarString(encoder, this.parent)
   }
 
   /**
@@ -394,7 +395,10 @@ export class OpChildOf {
    * @return {OpChildOf}
    */
   static decode (decoder) {
-    return new OpChildOf(decoding.readVarUint(decoder), decoding.readVarString(decoder))
+    const info = decoding.readUint8(decoder)
+    const cnt = decoding.readVarUint(decoder)
+    const parent = info === 0 ? decoding.readVarString(decoder) : null
+    return new OpChildOf(cnt, parent)
   }
 
   /**
@@ -414,7 +418,9 @@ export class OpChildOf {
    * @param {import('./dbtypes.js').OpValue} op
    */
   async integrate (ystream, tr, op) {
-    tr.tables.childDocs.set(new dbtypes.ParentKey(op.owner, op.collection, this.parent, op.doc, op.localClock), null)
+    if (this.parent !== null) {
+      tr.tables.childDocs.set(new dbtypes.ParentKey(op.owner, op.collection, this.parent, op.doc, op.localClock), null)
+    }
     // force that conflicts are unintegrated
     await mergeDocOps(ystream, op.owner, op.collection, op.doc, this.type)
   }
@@ -425,7 +431,9 @@ export class OpChildOf {
    * @param {import('./dbtypes.js').OpValue} op
    */
   unintegrate (_ystream, tr, op) {
-    tr.tables.childDocs.remove(new dbtypes.ParentKey(op.owner, op.collection, op.doc, this.parent, op.localClock))
+    if (this.parent !== null) {
+      tr.tables.childDocs.remove(new dbtypes.ParentKey(op.owner, op.collection, op.doc, this.parent, op.localClock))
+    }
   }
 }
 

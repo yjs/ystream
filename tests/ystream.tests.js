@@ -175,16 +175,27 @@ export const testLww = async tc => {
  */
 export const testFolderStructure = async tc => {
   const th = await helpers.createTestScenario(tc)
-  const [{ collection: collection1 }] = await th.createClients(2)
+  const [{ collection: collection1 }] = await th.createClients(1)
   await collection1.setParent('B', 'A')
   await collection1.setParent('C', 'B')
   await collection1.setParent('D', 'B')
   t.assert(await collection1.getParent('B') === 'A')
   t.assert(await collection1.getParent('D') === 'B')
   t.assert(await collection1.getParent('C') === 'B')
-  t.compareArrays(await collection1.getChildren('A'), ['B'])
-  t.compareArrays(await collection1.getChildren('B'), ['C', 'D']) // should return in alphabetical order
+  t.compareArrays(await collection1.getDocChildren('A'), ['B'])
+  t.compareArrays(await collection1.getDocChildren('B'), ['C', 'D']) // should return in alphabetical order
   t.compareArrays(await collection1.getDocPath('A'), [])
   t.compareArrays(await collection1.getDocPath('B'), ['A'])
   t.compareArrays(await collection1.getDocPath('D'), ['A', 'B'])
+  t.compare(await collection1.getDocChildrenRecursive('A'), { B: { C: {}, D: {} } })
+  await collection1.setParent('B', null)
+  t.compare(await collection1.getDocChildrenRecursive('A'), {})
+  t.compare(await collection1.getDocChildrenRecursive('B'), { C: {}, D: {} })
+  await collection1.setParent('A', 'B')
+  t.compare(await collection1.getDocChildrenRecursive('B'), { A: {}, C: {}, D: {} })
+  // @todo handle concurrent moves: parentless docs (deleted parent) should be moved to an
+  // orphanage. Circles should be detected - the most recent "parent" should be moved to the
+  // orhpanage.
+  // The orhpanage should just be a local container of references. docs don't need to be reparented.
+  // Circles are actually fine as long as the app can work with them.
 }

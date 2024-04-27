@@ -258,13 +258,45 @@ export const getDocChildren = async (ystream, owner, collection, parent) => {
 }
 
 /**
+ * @typedef {{ [docname:string]: ParentChildMapping}} ParentChildMapping
+ */
+
+/**
+ * @param {Ystream} ystream
+ * @param {Uint8Array} owner
+ * @param {string} collection
+ * @param {string} parent
+ * @return {Promise<ParentChildMapping>}
+ */
+export const getDocChildrenRecursive = (ystream, owner, collection, parent) => ystream.db.transact(async tr => {
+  /**
+   * @param {string} cparent
+   */
+  const getChildren = async (cparent) => {
+    const children = await tr.tables.childDocs.getKeys({
+      prefix: { owner, collection, parent: cparent }
+    })
+    /**
+     * @type {ParentChildMapping}
+     */
+    const cmap = {}
+    for (let i = 0; i < children.length; i++) {
+      const { child } = children[i]
+      cmap[child] = await getChildren(child)
+    }
+    return cmap
+  }
+  return getChildren(parent)
+})
+
+/**
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {string} doc
  * @return {Promise<Array<string>>}
  */
-export const getDocPath = async (ystream, owner, collection, doc) => {
+export const getDocPath = (ystream, owner, collection, doc) => ystream.db.transact(async _tr => { // exec in a single db transaction
   let currDoc = doc
   /**
    * @type {Array<string>}
@@ -277,7 +309,7 @@ export const getDocPath = async (ystream, owner, collection, doc) => {
     path.unshift(currDoc)
   }
   return path
-}
+})
 
 /**
  * @template {operations.OpTypeIds} TYPEID

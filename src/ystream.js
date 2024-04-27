@@ -209,19 +209,25 @@ export class Collection extends ObservableV2 {
 
   /**
    * @param {string} docname
-   * @param {string} parentDoc
+   * @param {string|null} parentDoc
    */
   async setParent (docname, parentDoc) {
     const co = await actions.getDocOpsMerged(this.ystream, this.ownerBin, this.collection, docname, operations.OpChildOfType)
     await actions.addOp(this.ystream, this.ownerBin, this.collection, docname, new operations.OpChildOf(co?.op.cnt || 0, parentDoc))
-    return co?.op.parent
   }
 
   /**
    * @param {string} docname
    */
-  getChildren (docname) {
+  getDocChildren (docname) {
     return actions.getDocChildren(this.ystream, this.ownerBin, this.collection, docname)
+  }
+
+  /**
+   * @param {string} docname
+   */
+  getDocChildrenRecursive (docname) {
+    return actions.getDocChildrenRecursive(this.ystream, this.ownerBin, this.collection, docname)
   }
 
   /**
