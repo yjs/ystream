@@ -55,7 +55,6 @@ const readOps = (decoder, ystream, comm) => {
     ops.push(/** @type {dbtypes.OpValue} */ (dbtypes.OpValue.decode(decoder)))
   }
   log(ystream, comm, 'Ops', `received ${ops.length} ops. decoderlen=${decoder.arr.length}. first: clock=${ops[0].clock},client=${ops[0].client}`)
-  // console.log(ops)
   if (comm.user == null) {
     error.unexpectedCase()
   }

@@ -199,3 +199,33 @@ export const testFolderStructure = async tc => {
   // The orhpanage should just be a local container of references. docs don't need to be reparented.
   // Circles are actually fine as long as the app can work with them.
 }
+
+/**
+ * Testing loading from the database.
+ *
+ * @param {t.TestCase} tc
+ */
+export const testDeleteDoc = async tc => {
+  const docid = 'test'
+  const th = await helpers.createTestScenario(tc)
+  const [{ collection: collection1 }] = await th.createClients(1)
+  const ydoc = collection1.getYdoc(docid)
+  await ydoc.whenLoaded
+  ydoc.getText().insert(0, 'hi')
+  const ydocCheck = collection1.getYdoc(docid)
+  await ydocCheck.whenLoaded
+  t.compareStrings(ydocCheck.getText().toString(), 'hi')
+  console.log('docval prev', ydocCheck.getText().toString())
+  ydocCheck.destroy()
+  await collection1.setLww(docid, 'val')
+  t.assert(await collection1.getLww(docid) === 'val')
+  await collection1.deleteDoc(docid)
+  const ydocCheck2 = collection1.getYdoc(docid)
+  console.log('docval prev', ydocCheck2.getText().toString())
+  t.compareStrings(ydocCheck2.getText().toString(), '')
+  t.assert(await collection1.getLww(docid) === undefined)
+  collection1.setLww(docid, 'val')
+  t.assert(await collection1.getLww(docid) === undefined)
+  // @todo test if deletion works in combination with parents (integration of delete should
+  // orphan child docs)
+}

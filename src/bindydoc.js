@@ -4,6 +4,7 @@ import * as buffer from 'lib0/buffer'
 import * as env from 'lib0/environment'
 import * as actions from './actions.js'
 import * as operations from './operations.js'
+import * as promise from 'lib0/promise'
 
 /**
  * @typedef {import('./index.js').Ystream} Ystream
@@ -33,6 +34,21 @@ export const bindydoc = async (ystream, owner, collection, doc, ydoc) => {
       actions.addOp(ystream, ownerBin, collection, doc, new operations.OpYjsUpdate(update))
     }
   })
+  const updates = await ystream.db.transact(async () => {
+    const [
+      updates,
+      isDeleted
+    ] = await promise.all([
+      actions.getDocOps(ystream, ownerBin, collection, doc, operations.OpYjsUpdateType, 0),
+      actions.isDocDeleted(ystream, ownerBin, collection, doc)
+    ])
+    return isDeleted ? null : updates
+  })
+  if (updates === null) {
+    console.error('[ystream] You opened a deleted document. The doc will be destroyed.')
+    ydoc.destroy()
+    return null
+  }
   /* c8 ignore start */
   if (env.isBrowser) {
     const sub = bc.subscribe(bcroom, (data, origin) => {
@@ -45,7 +61,6 @@ export const bindydoc = async (ystream, owner, collection, doc, ydoc) => {
     })
   }
   /* c8 ignore end */
-  const updates = await actions.getDocOps(ystream, ownerBin, collection, doc, operations.OpYjsUpdateType, 0) // currentClock
   updates.length > 0 && Y.transact(ydoc, () => {
     updates.forEach(update => {
       if (update.op.type === operations.OpYjsUpdateType) {

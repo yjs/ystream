@@ -16,13 +16,14 @@ export const OpNoPermissionType = 1
 export const OpPermType = 2
 export const OpLwwType = 3
 export const OpChildOfType = 4
+export const OpDeleteDocType = 5
 
 /**
- * @typedef {OpYjsUpdateType | OpNoPermissionType | OpPermType | OpLwwType | OpChildOfType } OpTypeIds
+ * @typedef {keyof typeMap} OpTypeIds
  */
 
 /**
- * @typedef {OpYjsUpdate | OpNoPermission | OpPerm | OpLww | OpChildOf} OpTypes
+ * @typedef {InstanceType<typeMap[OpTypeIds]>} OpTypes
  */
 
 /**
@@ -69,6 +70,12 @@ export class AbstractOp {
   }
 
   /**
+   * Note that op.localClock must be set before calling integrate!
+   *
+   * @todo There is probably a better abstraction than integrate / unintegrate to achive consistency
+   * (e.g. AbstractOp.cleanup(merged, deletedOps), which is called only once before calling event
+   * handlers or returning the promise)
+   *
    * @param {import('./ystream.js').Ystream} _ystream
    * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
    * @param {import('./dbtypes.js').OpValue} _op
@@ -169,7 +176,7 @@ export class OpPerm {
    * @return {OpPerm}
    */
   static decode (decoder) {
-    const op = new OpPerm()
+    const op = new this()
     const size = decoding.readVarUint(decoder)
     for (let i = 0; i < size; i++) {
       const userhash = decoding.readVarString(decoder)
@@ -267,7 +274,7 @@ export class OpNoPermission {
    * @return {OpNoPermission}
    */
   static decode (_decoder) {
-    return new OpNoPermission()
+    return new this()
   }
 
   /**
@@ -329,7 +336,7 @@ export class OpLww {
    * @return {OpLww}
    */
   static decode (decoder) {
-    return new OpLww(decoding.readVarUint(decoder), decoding.readAny(decoder))
+    return new this(decoding.readVarUint(decoder), decoding.readAny(decoder))
   }
 
   /**
@@ -432,7 +439,7 @@ export class OpChildOf {
    */
   unintegrate (_ystream, tr, op) {
     if (this.parent !== null) {
-      tr.tables.childDocs.remove(new dbtypes.ParentKey(op.owner, op.collection, op.doc, this.parent, op.localClock))
+      tr.tables.childDocs.remove(new dbtypes.ParentKey(op.owner, op.collection, this.parent, op.doc, op.localClock))
     }
   }
 }
@@ -467,7 +474,7 @@ export class OpYjsUpdate {
    * @return {OpYjsUpdate}
    */
   static decode (decoder) {
-    return new OpYjsUpdate(decoding.readVarUint8Array(decoder))
+    return new this(decoding.readVarUint8Array(decoder))
   }
 
   /**
@@ -511,10 +518,63 @@ export class OpYjsUpdate {
   }
 }
 
+/**
+ * @implements AbstractOp
+ */
+export class OpDeleteDoc {
+  /**
+   * @return {OpDeleteDocType}
+   */
+  get type () {
+    return OpDeleteDocType
+  }
+
+  /**
+   * @param {encoding.Encoder} _encoder
+   */
+  encode (_encoder) { }
+
+  /**
+   * @param {decoding.Decoder} _decoder
+   * @return {OpDeleteDoc}
+   */
+  static decode (_decoder) {
+    return new this()
+  }
+
+  /**
+   * This returns the "last writer". There is no merging. The other updates (even the ones that
+   * happen "later"), can safely be removed without causing sync-issues.
+   *
+   * @param {Array<import('./dbtypes.js').OpValue<OpDeleteDoc>>} ops
+   * @param {boolean} _gc
+   * @return {import('./dbtypes.js').OpValue<OpDeleteDoc>}
+   */
+  static merge (ops, _gc) {
+    // we only want to retain the last op of the user with the highest client-id
+    return array.fold(ops, ops[0], (o1, o2) => o1.client > o2.client ? o1 : o2)
+  }
+
+  /**
+   * @param {import('./ystream.js').Ystream} _ystream
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('./dbtypes.js').OpValue} _op
+   */
+  integrate (_ystream, _tr, _op) { }
+
+  /**
+   * @param {import('./ystream.js').Ystream} _ystream
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('./dbtypes.js').OpValue} _op
+   */
+  unintegrate (_ystream, _tr, _op) { }
+}
+
 export const typeMap = {
   [OpYjsUpdateType]: OpYjsUpdate,
   [OpNoPermissionType]: OpNoPermission,
   [OpPermType]: OpPerm,
   [OpLwwType]: OpLww,
-  [OpChildOfType]: OpChildOf
+  [OpChildOfType]: OpChildOf,
+  [OpDeleteDocType]: OpDeleteDoc
 }

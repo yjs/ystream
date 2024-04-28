@@ -258,6 +258,10 @@ export class DeviceIdentity {
    */
   static decode (decoder) {
     decoding.readVarUint(decoder) // read a "type" byte that is reserved for future usage
+    /**
+     * @todo validate that the read key conforms to a specific format and doesn't allow to contain
+     * "junk" that could be used to generate keys for a specific hash
+     */
     const pkey = decoding.readVarString(decoder)
     return new DeviceIdentity(pkey)
   }

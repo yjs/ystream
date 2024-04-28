@@ -237,9 +237,39 @@ export const getDocOpsLast = async (ystream, owner, collection, doc, type) => {
  * @return {Promise<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>|null>}
  */
 export const getDocOpsMerged = async (ystream, owner, collection, doc, type) => {
-  const ops = await getDocOps(ystream, owner, collection, doc, type, 0)
-  return utils.merge(ops, false)
+  const [
+    ops,
+    docDeleted
+  ] = await promise.all([
+    getDocOps(ystream, owner, collection, doc, type, 0),
+    type === operations.OpDeleteDocType ? false : isDocDeleted(ystream, owner, collection, doc)
+  ])
+  return docDeleted ? null : utils.merge(ops, false)
 }
+
+/**
+ * @param {Ystream} ystream
+ * @param {Uint8Array} owner
+ * @param {string} collection
+ * @param {string} docid
+ */
+export const isDocDeleted = async (ystream, owner, collection, docid) => {
+  const op = await mergeDocOps(ystream, owner, collection, docid, operations.OpDeleteDocType)
+  return op != null
+}
+
+/**
+ * @param {Ystream} ystream
+ * @param {Uint8Array} owner
+ * @param {string} collection
+ * @param {string} docid
+ */
+export const deleteDoc = (ystream, owner, collection, docid) => ystream.db.transact(async _tr => {
+  const isDeleted = await isDocDeleted(ystream, owner, collection, docid)
+  if (!isDeleted) {
+    await addOp(ystream, owner, collection, docid, new operations.OpDeleteDoc())
+  }
+})
 
 /**
  * @param {Ystream} ystream
@@ -297,15 +327,21 @@ export const getDocChildrenRecursive = (ystream, owner, collection, parent) => y
  * @return {Promise<Array<string>>}
  */
 export const getDocPath = (ystream, owner, collection, doc) => ystream.db.transact(async _tr => { // exec in a single db transaction
+  /**
+   * @type {string | null}
+   */
   let currDoc = doc
   /**
    * @type {Array<string>}
    */
   const path = []
   while (currDoc != null) {
+    /**
+     * @type {dbtypes.OpValue<operations.OpChildOf> | null}
+     */
     const parentOp = await getDocOpsMerged(ystream, owner, collection, currDoc, operations.OpChildOfType)
-    if (parentOp == null) break
-    currDoc = parentOp.op.parent
+    currDoc = parentOp?.op.parent || null
+    if (currDoc == null) break
     path.unshift(currDoc)
   }
   return path
@@ -323,10 +359,16 @@ export const getDocPath = (ystream, owner, collection, doc) => ystream.db.transa
  */
 export const mergeDocOps = (ystream, owner, collection, doc, type) =>
   ystream.db.transact(async tr => {
-    const allOps = /** @type {Array<dbtypes.OpValue<TYPE>>} */ (await getDocOps(ystream, owner, collection, doc, type, 0))
-    const mergedOp = utils.merge(allOps, true)
-    if (mergedOp === null) return null
-    const opsToDelete = allOps.filter(op => mergedOp.client !== op.client && mergedOp.clock !== op.clock)
+    const [
+      allOps,
+      docDeleted
+    ] = await promise.all([
+      /** @type {Promise<Array<dbtypes.OpValue<TYPE>>>} */ (getDocOps(ystream, owner, collection, doc, type, 0)),
+      type === operations.OpDeleteDocType ? false : isDocDeleted(ystream, owner, collection, doc)
+    ])
+    if (allOps.length === 0) return null
+    const mergedOp = docDeleted ? null : utils.merge(allOps, true)
+    const opsToDelete = mergedOp === null ? allOps : allOps.filter(op => mergedOp.client !== op.client || mergedOp.clock !== op.clock)
     await promise.all(opsToDelete.map(/** @return {Promise<any>} */ op =>
       promise.all([op.op.unintegrate(ystream, tr, /** @type {any} */ (op)), tr.tables.oplog.remove(op.localClock)])
     ))
@@ -422,9 +464,9 @@ export const addOp = async (ystream, owner, collection, doc, opv) => {
   const op = await ystream.db.transact(async tr => {
     const op = new dbtypes.OpValue(ystream.clientid, 0, owner, collection, doc, opv)
     const key = await tr.tables.oplog.add(op)
-    opv.integrate(ystream, tr, op)
     op.clock = key.v
     op.localClock = key.v
+    await opv.integrate(ystream, tr, op)
     tr.tables.clocks.set(new dbtypes.ClocksKey(op.client, owner, collection), new dbtypes.ClientClockValue(op.clock, op.clock))
     return op
   })
@@ -518,8 +560,8 @@ export const applyRemoteOps = async (ystream, ops, user, origin) => {
         const localClock = await tr.tables.oplog.add(op)
         // @todo integrating concurrently might not work well in all cases. (at least not
         // efficiently)
-        await op.op.integrate(ystream, tr, op)
         op.localClock = localClock.v
+        await op.op.integrate(ystream, tr, op)
         clientClockEntries.set(encodeClocksKey(op.client, op.owner, op.collection), new dbtypes.ClientClockValue(op.clock, op.localClock))
         filteredOpsPermsChecked.push(op)
       } else {

@@ -232,20 +232,36 @@ export class Collection extends ObservableV2 {
 
   /**
    * @param {string} key
+   * @returns undefined if the value was not defined previously
    */
   async getLww (key) {
     const lww = await actions.getDocOpsMerged(this.ystream, this.ownerBin, this.collection, key, operations.OpLwwType)
-    return lww?.op.val
+    return lww === null ? undefined : lww.op.val
   }
 
   /**
    * @param {string} key
    * @param {any} val
+   * @return the previous values
    */
   async setLww (key, val) {
     const lww = await actions.getDocOpsMerged(this.ystream, this.ownerBin, this.collection, key, operations.OpLwwType)
     await actions.addOp(this.ystream, this.ownerBin, this.collection, key, new operations.OpLww(lww?.op.cnt || 0, val))
-    return lww?.op.val
+    return lww === null ? undefined : lww.op.val
+  }
+
+  /**
+   * @param {string} docid
+   */
+  deleteDoc (docid) {
+    return actions.deleteDoc(this.ystream, this.ownerBin, this.collection, docid)
+  }
+
+  /**
+   * @param {string} docid
+   */
+  isDocDeleted (docid) {
+    return actions.isDocDeleted(this.ystream, this.ownerBin, this.collection, docid)
   }
 
   destroy () {
