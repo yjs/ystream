@@ -176,23 +176,48 @@ export const testLww = async tc => {
 export const testFolderStructure = async tc => {
   const th = await helpers.createTestScenario(tc)
   const [{ collection: collection1 }] = await th.createClients(1)
-  await collection1.setParent('B', 'A')
-  await collection1.setParent('C', 'B')
-  await collection1.setParent('D', 'B')
+  await collection1.setDocParent('A', null, 'a')
+  await collection1.setDocParent('B', 'A', 'b')
+  await collection1.setDocParent('C', 'B', 'c')
+  await collection1.setDocParent('D', 'B', 'd')
+  t.assert(await collection1.getParent('A') === null)
+  const a = await collection1.getParent('B')
+  console.log(a)
   t.assert(await collection1.getParent('B') === 'A')
   t.assert(await collection1.getParent('D') === 'B')
   t.assert(await collection1.getParent('C') === 'B')
-  t.compareArrays(await collection1.getDocChildren('A'), ['B'])
-  t.compareArrays(await collection1.getDocChildren('B'), ['C', 'D']) // should return in alphabetical order
-  t.compareArrays(await collection1.getDocPath('A'), [])
-  t.compareArrays(await collection1.getDocPath('B'), ['A'])
-  t.compareArrays(await collection1.getDocPath('D'), ['A', 'B'])
-  t.compare(await collection1.getDocChildrenRecursive('A'), { B: { C: {}, D: {} } })
-  await collection1.setParent('B', null)
-  t.compare(await collection1.getDocChildrenRecursive('A'), {})
-  t.compare(await collection1.getDocChildrenRecursive('B'), { C: {}, D: {} })
-  await collection1.setParent('A', 'B')
-  t.compare(await collection1.getDocChildrenRecursive('B'), { A: {}, C: {}, D: {} })
+  console.log('docname A:', await collection1.getDocName('A'))
+  t.assert(await collection1.getDocName('A') === 'a')
+  t.assert(await collection1.getDocName('B') === 'b')
+  t.assert(await collection1.getDocName('D') === 'd')
+  t.assert(await collection1.getDocName('C') === 'c')
+  t.compare(await collection1.getDocChildren('A'), [{ docid: 'B', docname: 'b' }])
+  t.compare(await collection1.getDocChildren('B'), [{ docid: 'C', docname: 'c' }, { docid: 'D', docname: 'd' }]) // should return in alphabetical order
+  t.compare(await collection1.getDocPath('A'), [{ docid: 'A', docname: 'a' }])
+  t.compare(await collection1.getDocPath('B'), [{ docid: 'A', docname: 'a' }, { docid: 'B', docname: 'b' }])
+  t.compare(await collection1.getDocPath('D'), [{ docid: 'A', docname: 'a' }, { docid: 'B', docname: 'b' }, { docid: 'D', docname: 'd' }])
+  t.compare(await collection1.getDocChildrenRecursive('A'), [
+    {
+      docid: 'B',
+      docname: 'b',
+      children: [
+        { docid: 'C', docname: 'c', children: [] },
+        { docid: 'D', docname: 'd', children: [] }
+      ]
+    }
+  ])
+  await collection1.setDocParent('B', null, 'b')
+  t.compare(await collection1.getDocChildrenRecursive('A'), [])
+  t.compare(await collection1.getDocChildrenRecursive('B'), [
+    { docid: 'C', docname: 'c', children: [] },
+    { docid: 'D', docname: 'd', children: [] }
+  ])
+  await collection1.setDocParent('A', 'B', 'a')
+  t.compare(await collection1.getDocChildrenRecursive('B'), [
+    { docid: 'A', docname: 'a', children: [] },
+    { docid: 'C', docname: 'c', children: [] },
+    { docid: 'D', docname: 'd', children: [] }
+  ])
   // @todo handle concurrent moves: parentless docs (deleted parent) should be moved to an
   // orphanage. Circles should be detected - the most recent "parent" should be moved to the
   // orhpanage.
@@ -218,12 +243,17 @@ export const testDeleteDoc = async tc => {
   console.log('docval prev', ydocCheck.getText().toString())
   ydocCheck.destroy()
   await collection1.setLww(docid, 'val')
+  await collection1.setDocParent(docid, 'parentid', 'mydoc.md')
   t.assert(await collection1.getLww(docid) === 'val')
+  t.assert(await collection1.getParent(docid) === 'parentid')
+  t.assert(await collection1.getDocName(docid) === 'mydoc.md')
   await collection1.deleteDoc(docid)
   const ydocCheck2 = collection1.getYdoc(docid)
   console.log('docval prev', ydocCheck2.getText().toString())
   t.compareStrings(ydocCheck2.getText().toString(), '')
   t.assert(await collection1.getLww(docid) === undefined)
+  t.assert(await collection1.getParent(docid) === null)
+  t.assert(await collection1.getDocName(docid) === null)
   collection1.setLww(docid, 'val')
   t.assert(await collection1.getLww(docid) === undefined)
   // @todo test if deletion works in combination with parents (integration of delete should

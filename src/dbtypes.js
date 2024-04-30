@@ -36,6 +36,7 @@ export class OpValue {
     this.clock = clock
     this.owner = owner
     this.collection = collection
+    // @todo rename to docid to avoid resemblence to docname
     this.doc = doc
     this.op = op
   }
@@ -511,14 +512,14 @@ export class ParentKey {
    * @param {Uint8Array} owner
    * @param {string} collection
    * @param {string} parent
-   * @param {string} child
+   * @param {string} childname
    * @param {number} localClock
    */
-  constructor (owner, collection, parent, child, localClock) {
+  constructor (owner, collection, parent, childname, localClock) {
     this.owner = owner
     this.collection = collection
     this.parent = parent
-    this.child = child
+    this.childname = childname
     this.localClock = localClock
   }
 
@@ -540,7 +541,7 @@ export class ParentKey {
     encoding.writeVarUint8Array(encoder, this.owner)
     encoding.writeVarString(encoder, this.collection)
     encoding.writeVarString(encoder, this.parent)
-    encoding.writeTerminatedString(encoder, this.child)
+    encoding.writeTerminatedString(encoder, this.childname)
     encoding.writeVarUint(encoder, this.localClock)
   }
 
@@ -552,8 +553,8 @@ export class ParentKey {
     const owner = decoding.readVarUint8Array(decoder)
     const collection = decoding.readVarString(decoder)
     const doc = decoding.readVarString(decoder)
-    const child = decoding.readTerminatedString(decoder)
+    const childname = decoding.readTerminatedString(decoder)
     const localClock = decoding.readVarUint(decoder)
-    return new this(owner, collection, doc, child, localClock)
+    return new this(owner, collection, doc, childname, localClock)
   }
 }

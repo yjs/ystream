@@ -369,16 +369,24 @@ export class OpLww {
 }
 
 /**
+ * @todo This currently handles parent-child relation AND the name of a document. It's easier to
+ * manage the database like this.
+ *
+ * However, it does make sense to enable users renaming a document while another user is moving
+ * content. This implementation might be problematic in a shared filesystem.
+ *
  * @implements AbstractOp
  */
 export class OpChildOf {
   /**
    * @param {number} cnt
    * @param {string|null} parent
+   * @param {string|null} childname
    */
-  constructor (cnt, parent) {
+  constructor (cnt, parent, childname) {
     this.cnt = cnt
     this.parent = parent
+    this.childname = childname
   }
 
   /**
@@ -392,9 +400,12 @@ export class OpChildOf {
    * @param {encoding.Encoder} encoder
    */
   encode (encoder) {
-    encoding.writeUint8(encoder, this.parent === null ? 1 : 0)
+    // bit0: has parent
+    // bit1: has childname
+    encoding.writeUint8(encoder, (this.parent === null ? 0 : 1) | (this.childname === null ? 0 : 2))
     encoding.writeVarUint(encoder, this.cnt)
     if (this.parent !== null) encoding.writeVarString(encoder, this.parent)
+    if (this.childname !== null) encoding.writeVarString(encoder, this.childname)
   }
 
   /**
@@ -404,8 +415,9 @@ export class OpChildOf {
   static decode (decoder) {
     const info = decoding.readUint8(decoder)
     const cnt = decoding.readVarUint(decoder)
-    const parent = info === 0 ? decoding.readVarString(decoder) : null
-    return new OpChildOf(cnt, parent)
+    const parent = (info & 1) === 1 ? decoding.readVarString(decoder) : null
+    const childname = (info & 2) === 2 ? decoding.readVarString(decoder) : null
+    return new OpChildOf(cnt, parent, childname)
   }
 
   /**
@@ -426,7 +438,7 @@ export class OpChildOf {
    */
   async integrate (ystream, tr, op) {
     if (this.parent !== null) {
-      tr.tables.childDocs.set(new dbtypes.ParentKey(op.owner, op.collection, this.parent, op.doc, op.localClock), null)
+      tr.tables.childDocs.set(new dbtypes.ParentKey(op.owner, op.collection, this.parent, this.childname ?? op.doc, op.localClock), op.doc)
     }
     // force that conflicts are unintegrated
     await mergeDocOps(ystream, op.owner, op.collection, op.doc, this.type)
@@ -439,7 +451,7 @@ export class OpChildOf {
    */
   unintegrate (_ystream, tr, op) {
     if (this.parent !== null) {
-      tr.tables.childDocs.remove(new dbtypes.ParentKey(op.owner, op.collection, this.parent, op.doc, op.localClock))
+      tr.tables.childDocs.remove(new dbtypes.ParentKey(op.owner, op.collection, this.parent, this.childname ?? op.doc, op.localClock))
     }
   }
 }
@@ -560,7 +572,11 @@ export class OpDeleteDoc {
    * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
    * @param {import('./dbtypes.js').OpValue} _op
    */
-  integrate (_ystream, _tr, _op) { }
+  integrate (_ystream, _tr, _op) {
+    /**
+     * @todo get all doc operations here and unintegrate them
+     */
+  }
 
   /**
    * @param {import('./ystream.js').Ystream} _ystream

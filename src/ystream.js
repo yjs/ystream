@@ -193,37 +193,72 @@ export class Collection extends ObservableV2 {
   }
 
   /**
-   * @param {string} docname
+   * @param {string} docid
+   * @return {Promise<string?>}
    */
-  async getParent (docname) {
-    const co = await actions.getDocOpsMerged(this.ystream, this.ownerBin, this.collection, docname, operations.OpChildOfType)
-    return co?.op.parent
+  async getParent (docid) {
+    const co = await actions.getDocOpsMerged(this.ystream, this.ownerBin, this.collection, docid, operations.OpChildOfType)
+    return co?.op.parent || null
+  }
+
+  /**
+   * @param {string} docid
+   * @return {Promise<string?>}
+   */
+  async getDocName (docid) {
+    const co = await actions.getDocOpsMerged(this.ystream, this.ownerBin, this.collection, docid, operations.OpChildOfType)
+    return co?.op.childname || null
   }
 
   /**
    * @param {string} docname
+   * @return {Promise<Array<{ docid: string, docname: string | null }>>}
    */
   getDocPath (docname) {
     return actions.getDocPath(this.ystream, this.ownerBin, this.collection, docname)
   }
 
   /**
-   * @param {string} docname
-   * @param {string|null} parentDoc
+   * @param {string} rootid
+   * @return {Promise<Array<string>>}
    */
-  async setParent (docname, parentDoc) {
-    const co = await actions.getDocOpsMerged(this.ystream, this.ownerBin, this.collection, docname, operations.OpChildOfType)
-    await actions.addOp(this.ystream, this.ownerBin, this.collection, docname, new operations.OpChildOf(co?.op.cnt || 0, parentDoc))
+  getDocIdsFromNamePath (rootid, path) {
+    return actions.getDocIdsFromNamePath(this.ystream, this.ownerBin, this.collection, rootid, path)
   }
 
   /**
+   * This functions updates the parent of a doc AND sets the name of the document. It simulates
+   * the behavior of the unix command `mv` "move".
+   *
+   * It is possible to query the children of a parent. The children can be identified by the docid
+   * (immutable) OR the docname (mutable, but not guaranteed to be unique across devices).
+   *
+   * This function does not overwrite content. The existing file should be deleted manually.
+   *
+   * @param {string} childid
+   * @param {string|null} parentDoc
+   * @param {string} childname
+   */
+  async setDocParent (childid, parentDoc, childname) {
+    const co = await actions.getDocOpsMerged(this.ystream, this.ownerBin, this.collection, childid, operations.OpChildOfType)
+    await actions.addOp(this.ystream, this.ownerBin, this.collection, childid, new operations.OpChildOf(co?.op.cnt || 0, parentDoc, childname))
+  }
+
+  /**
+   * This function retrieves the children on a document. It simulates the behavior of the `ls` unix
+   * command.
+   *
    * @param {string} docname
+   * @return {Promise<Array<{ docid: string, docname: string }>>}
    */
   getDocChildren (docname) {
     return actions.getDocChildren(this.ystream, this.ownerBin, this.collection, docname)
   }
 
   /**
+   * This function retrieves the children on a document. It simulates the behavior of the `ls **\/*
+   * -l` unix command.
+   *
    * @param {string} docname
    */
   getDocChildrenRecursive (docname) {

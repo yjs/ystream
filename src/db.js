@@ -37,9 +37,13 @@ export const def = {
         }
       }
     },
+    /**
+     * Maps from parent_docid/child_docname => child_docid
+     * Useful for looking up docnames of children
+     */
     childDocs: {
       key: dbtypes.ParentKey,
-      value: isodb.NoValue
+      value: isodb.StringValue
     },
     clocks: {
       key: dbtypes.ClocksKey,

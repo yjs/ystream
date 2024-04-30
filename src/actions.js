@@ -276,47 +276,53 @@ export const deleteDoc = (ystream, owner, collection, docid) => ystream.db.trans
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {string} parent
- * @return {Promise<Array<string>>}
+ * @return {Promise<Array<{ docid: string, docname: string }>>}
  */
 export const getDocChildren = async (ystream, owner, collection, parent) => {
-  const keys = await ystream.db.transact(tr =>
-    tr.tables.childDocs.getKeys({
+  const entries = await ystream.db.transact(tr =>
+    tr.tables.childDocs.getEntries({
       prefix: { owner, collection, parent }
     })
   )
-  return keys.map(k => k.child)
+  return entries.map(({ key, value }) => ({ docname: key.childname, docid: value.v }))
 }
 
 /**
- * @typedef {{ [docname:string]: ParentChildMapping}} ParentChildMapping
+ * @typedef {{ docname: string, docid: string, children: Array<ParentChildMapping> }} ParentChildMapping
  */
 
 /**
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
- * @param {string} parent
- * @return {Promise<ParentChildMapping>}
+ * @param {string} parentid
+ * @return {Promise<Array<ParentChildMapping>>}
  */
-export const getDocChildrenRecursive = (ystream, owner, collection, parent) => ystream.db.transact(async tr => {
+export const getDocChildrenRecursive = (ystream, owner, collection, parentid) => ystream.db.transact(async tr => {
+  const childrenOps = await tr.tables.childDocs.getEntries({
+    prefix: { owner, collection, parent: parentid }
+  })
   /**
-   * @param {string} cparent
+   * @type {Array<ParentChildMapping>}
    */
-  const getChildren = async (cparent) => {
-    const children = await tr.tables.childDocs.getKeys({
-      prefix: { owner, collection, parent: cparent }
-    })
-    /**
-     * @type {ParentChildMapping}
-     */
-    const cmap = {}
-    for (let i = 0; i < children.length; i++) {
-      const { child } = children[i]
-      cmap[child] = await getChildren(child)
-    }
-    return cmap
-  }
-  return getChildren(parent)
+  const cmap = await promise.all(childrenOps.map(async child => ({
+    docid: child.value.v,
+    docname: child.key.childname,
+    children: await getDocChildrenRecursive(ystream, owner, collection, child.value.v)
+  })))
+  return cmap
+})
+
+/**
+ * @param {Ystream} ystream
+ * @param {Uint8Array} owner
+ * @param {string} collection
+ * @param {string} rootid
+ * @param {Array<string>} rootid
+ * @return {Promise<Array<{ docid: string, docname: string | null }>>}
+ */
+export const getDocIdsFromNamePath = (ystream, owner, collection, rootid, path) => ystream.db.transact(async tr => {
+  const children = tr.tables.childDocs.get({ prefix: { owner, collection } })
 })
 
 /**
@@ -324,7 +330,7 @@ export const getDocChildrenRecursive = (ystream, owner, collection, parent) => y
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {string} doc
- * @return {Promise<Array<string>>}
+ * @return {Promise<Array<{ docid: string, docname: string | null }>>}
  */
 export const getDocPath = (ystream, owner, collection, doc) => ystream.db.transact(async _tr => { // exec in a single db transaction
   /**
@@ -332,7 +338,7 @@ export const getDocPath = (ystream, owner, collection, doc) => ystream.db.transa
    */
   let currDoc = doc
   /**
-   * @type {Array<string>}
+   * @type {Array<{ docid: string, docname: string | null }>}
    */
   const path = []
   while (currDoc != null) {
@@ -340,9 +346,8 @@ export const getDocPath = (ystream, owner, collection, doc) => ystream.db.transa
      * @type {dbtypes.OpValue<operations.OpChildOf> | null}
      */
     const parentOp = await getDocOpsMerged(ystream, owner, collection, currDoc, operations.OpChildOfType)
+    path.unshift({ docid: currDoc, docname: parentOp?.op.childname || null })
     currDoc = parentOp?.op.parent || null
-    if (currDoc == null) break
-    path.unshift(currDoc)
   }
   return path
 })
