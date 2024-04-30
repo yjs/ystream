@@ -220,6 +220,7 @@ export class Collection extends ObservableV2 {
 
   /**
    * @param {string} rootid
+   * @param {Array<string>} path
    * @return {Promise<Array<string>>}
    */
   getDocIdsFromNamePath (rootid, path) {

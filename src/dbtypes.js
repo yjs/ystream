@@ -524,13 +524,16 @@ export class ParentKey {
   }
 
   /**
-   * @param {{ owner: Uint8Array, collection: string, parent: string }} prefix
+   * @param {{ owner: Uint8Array, collection: string, parent: string, docname?: string }} prefix
    */
-  static prefix ({ owner, collection, parent }) {
+  static prefix ({ owner, collection, parent, docname }) {
     return encoding.encode(encoder => {
       encoding.writeVarUint8Array(encoder, owner)
       encoding.writeVarString(encoder, collection)
       encoding.writeVarString(encoder, parent)
+      if (docname != null) {
+        encoding.writeTerminatedString(encoder, docname)
+      }
     })
   }
 

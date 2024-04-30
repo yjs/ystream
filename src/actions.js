@@ -318,11 +318,14 @@ export const getDocChildrenRecursive = (ystream, owner, collection, parentid) =>
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {string} rootid
- * @param {Array<string>} rootid
- * @return {Promise<Array<{ docid: string, docname: string | null }>>}
+ * @param {Array<string>} path
+ * @return {Promise<Array<string>>}
  */
 export const getDocIdsFromNamePath = (ystream, owner, collection, rootid, path) => ystream.db.transact(async tr => {
-  const children = tr.tables.childDocs.get({ prefix: { owner, collection } })
+  if (path.length === 0) return []
+  const children = await tr.tables.childDocs.getValues({ prefix: { owner, collection, parent: rootid, docname: path[0] } })
+  if (path.length === 1) return children.map(c => c.v)
+  return promise.all(children.map(child => getDocIdsFromNamePath(ystream, owner, collection, child.v, path.slice(1)))).then(res => res.flat(1))
 })
 
 /**

@@ -206,6 +206,9 @@ export const testFolderStructure = async tc => {
       ]
     }
   ])
+  t.compare(await collection1.getDocIdsFromNamePath('A', ['b']), ['B'])
+  t.compare(await collection1.getDocIdsFromNamePath('A', ['b', 'c']), ['C'])
+  t.compare(await collection1.getDocIdsFromNamePath('A', ['c']), [])
   await collection1.setDocParent('B', null, 'b')
   t.compare(await collection1.getDocChildrenRecursive('A'), [])
   t.compare(await collection1.getDocChildrenRecursive('B'), [
