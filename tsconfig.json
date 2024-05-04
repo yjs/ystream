@@ -25,6 +25,6 @@
       "@y/stream/api/dbtypes": ["./src/dbtypes.js"]
     }
   },
-  "include": ["./src/**/*.js", "./tests/**/*.js", "./demo/**/*.js", "./demo/*.js"],
+  "include": ["./src/**/*.js", "./tests/**/*.js", "./demo/**/*.js", "./demo/*.js", "./bin/*.js"],
   "exclude": ["./dist", "./node_modules"]
 }

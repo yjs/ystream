@@ -175,7 +175,7 @@ class WSClient extends observable.ObservableV2 {
  * @param {boolean} [options.acceptNewUsers]
  * @param {{ user: dbtypes.UserIdentity, privateKey: CryptoKey }} [options.identity]
  */
-export const createWSServer = async ({ port = 9000, dbname = '.ystream-websocket-server', acceptNewUsers = true, identity } = {}) => {
+export const createWSServer = async ({ port = 9000, dbname = '.ystream/server', acceptNewUsers = true, identity } = {}) => {
   const db = await Ystream.open(dbname, { acceptNewUsers, syncsEverything: true })
   const server = new WSServer(db, port)
   if (!db.isAuthenticated) {

@@ -41,7 +41,10 @@ const _emitOpsEvent = (ystream, ops, origin) => {
     ystream.emit('ops', [ops, origin, true])
     ystream._eclock = ops[ops.length - 1].localClock + 1
   } else {
-    error.unexpectedCase()
+    // error.unexpectedCase()
+    console.warn('Ops are applied in wrong order - @todo')
+    ystream.emit('ops', [ops, origin, true])
+    ystream._eclock = ops[ops.length - 1].localClock + 1
   }
 }
 
@@ -211,11 +214,11 @@ export class Collection extends ObservableV2 {
   }
 
   /**
-   * @param {string} docname
+   * @param {string} docid
    * @return {Promise<Array<{ docid: string, docname: string | null }>>}
    */
-  getDocPath (docname) {
-    return actions.getDocPath(this.ystream, this.ownerBin, this.collection, docname)
+  getDocPath (docid) {
+    return actions.getDocPath(this.ystream, this.ownerBin, this.collection, docid)
   }
 
   /**

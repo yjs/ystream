@@ -103,6 +103,7 @@
     "yjs": "^13.5.43"
   },
   "optionalDependencies": {
+    "chokidar": "^3.6.0",
     "uws": "github:uNetworking/uWebSockets.js#v20.43.0",
     "ws": "^8.14.1"
   }
