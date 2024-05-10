@@ -173,34 +173,15 @@ const _updateOpClocksHelper = (ystream, updates) => updates.map(update => {
  * @param {string} collection
  * @param {string} doc
  * @param {TYPE} type
- * @param {number} clock
+ * @param {number} startLocalClock
+ * @param {number} endLocalClock
  * @return {Promise<Array<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>>>}
  */
-export const getDocOpsEntries = async (ystream, owner, collection, doc, type, clock) => {
+export const getDocOps = async (ystream, owner, collection, doc, type, startLocalClock = 0, endLocalClock = number.HIGHEST_UINT32) => {
   const entries = await ystream.db.transact(tr =>
     tr.tables.oplog.indexes.doc.getEntries({
-      start: new dbtypes.DocKey(type, owner, collection, doc, clock),
-      end: new dbtypes.DocKey(type, owner, collection, doc, number.HIGHEST_UINT32)
-    })
-  )
-  return /** @type {Array<dbtypes.OpValue<any>>} */ (_updateOpClocksHelper(ystream, entries).map(entry => entry.value))
-}
-
-/**
- * @template {operations.OpTypeIds} TYPE
- * @param {Ystream} ystream
- * @param {Uint8Array} owner
- * @param {string} collection
- * @param {string} doc
- * @param {TYPE} type
- * @param {number} clock
- * @return {Promise<Array<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>>>}
- */
-export const getDocOps = async (ystream, owner, collection, doc, type, clock) => {
-  const entries = await ystream.db.transact(tr =>
-    tr.tables.oplog.indexes.doc.getEntries({
-      start: new dbtypes.DocKey(type, owner, collection, doc, clock),
-      end: new dbtypes.DocKey(type, owner, collection, doc, number.HIGHEST_UINT32)
+      start: new dbtypes.DocKey(type, owner, collection, doc, startLocalClock),
+      end: new dbtypes.DocKey(type, owner, collection, doc, endLocalClock)
     })
   )
   return /** @type {Array<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>>} */ (_updateOpClocksHelper(ystream, entries).map(entry => entry.value))
@@ -234,15 +215,17 @@ export const getDocOpsLast = async (ystream, owner, collection, doc, type) => {
  * @param {string} collection
  * @param {string} doc
  * @param {TYPE} type
+ * @param {number} [startLocalClock]
+ * @param {number} [endLocalClock]
  * @return {Promise<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>|null>}
  */
-export const getDocOpsMerged = async (ystream, owner, collection, doc, type) => {
+export const getDocOpsMerged = async (ystream, owner, collection, doc, type, startLocalClock, endLocalClock) => {
   const [
     ops,
     docDeleted
   ] = await promise.all([
-    getDocOps(ystream, owner, collection, doc, type, 0),
-    type === operations.OpDeleteDocType ? false : isDocDeleted(ystream, owner, collection, doc)
+    getDocOps(ystream, owner, collection, doc, type, startLocalClock, endLocalClock),
+    type === operations.OpDeleteDocType ? false : isDocDeleted(ystream, owner, collection, doc, endLocalClock)
   ])
   return docDeleted ? null : utils.merge(ops, false)
 }
@@ -252,9 +235,10 @@ export const getDocOpsMerged = async (ystream, owner, collection, doc, type) => 
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {string} docid
+ * @param {number} [endLocalClock]
  */
-export const isDocDeleted = async (ystream, owner, collection, docid) => {
-  const op = await mergeDocOps(ystream, owner, collection, docid, operations.OpDeleteDocType)
+export const isDocDeleted = async (ystream, owner, collection, docid, endLocalClock) => {
+  const op = await mergeDocOps(ystream, owner, collection, docid, operations.OpDeleteDocType, endLocalClock)
   return op != null
 }
 
@@ -333,9 +317,10 @@ export const getDocIdsFromNamePath = (ystream, owner, collection, rootid, path) 
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {string} doc
+ * @param {number} [endLocalClock]
  * @return {Promise<Array<{ docid: string, docname: string | null }>>}
  */
-export const getDocPath = (ystream, owner, collection, doc) => ystream.db.transact(async _tr => { // exec in a single db transaction
+export const getDocPath = (ystream, owner, collection, doc, endLocalClock) => ystream.db.transact(async _tr => { // exec in a single db transaction
   /**
    * @type {string | null}
    */
@@ -348,7 +333,7 @@ export const getDocPath = (ystream, owner, collection, doc) => ystream.db.transa
     /**
      * @type {dbtypes.OpValue<operations.OpChildOf> | null}
      */
-    const parentOp = await getDocOpsMerged(ystream, owner, collection, currDoc, operations.OpChildOfType)
+    const parentOp = await getDocOpsMerged(ystream, owner, collection, currDoc, operations.OpChildOfType, 0, endLocalClock)
     path.unshift({ docid: currDoc, docname: parentOp?.op.childname || null })
     currDoc = parentOp?.op.parent || null
   }
@@ -363,16 +348,17 @@ export const getDocPath = (ystream, owner, collection, doc) => ystream.db.transa
  * @param {string} collection
  * @param {string} doc
  * @param {TYPEID} type
+ * @param {number} [endLocalClock]
  * @return {Promise<dbtypes.OpValue<TYPE>|null>}
  */
-export const mergeDocOps = (ystream, owner, collection, doc, type) =>
+export const mergeDocOps = (ystream, owner, collection, doc, type, endLocalClock) =>
   ystream.db.transact(async tr => {
     const [
       allOps,
       docDeleted
     ] = await promise.all([
-      /** @type {Promise<Array<dbtypes.OpValue<TYPE>>>} */ (getDocOps(ystream, owner, collection, doc, type, 0)),
-      type === operations.OpDeleteDocType ? false : isDocDeleted(ystream, owner, collection, doc)
+      /** @type {Promise<Array<dbtypes.OpValue<TYPE>>>} */ (getDocOps(ystream, owner, collection, doc, type, 0, endLocalClock)),
+      type === operations.OpDeleteDocType ? false : isDocDeleted(ystream, owner, collection, doc, endLocalClock)
     ])
     if (allOps.length === 0) return null
     const mergedOp = docDeleted ? null : utils.merge(allOps, true)

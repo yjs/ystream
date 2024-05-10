@@ -9,7 +9,6 @@ import * as random from 'lib0/random'
 import * as actions from './actions.js'
 import * as dbtypes from './dbtypes.js' // eslint-disable-line
 import * as bc from 'lib0/broadcastchannel'
-import * as error from 'lib0/error'
 import * as operations from './operations.js'
 import * as buffer from 'lib0/buffer'
 
@@ -215,10 +214,11 @@ export class Collection extends ObservableV2 {
 
   /**
    * @param {string} docid
+   * @param {number} [endLocalClock]
    * @return {Promise<Array<{ docid: string, docname: string | null }>>}
    */
-  getDocPath (docid) {
-    return actions.getDocPath(this.ystream, this.ownerBin, this.collection, docid)
+  getDocPath (docid, endLocalClock) {
+    return actions.getDocPath(this.ystream, this.ownerBin, this.collection, docid, endLocalClock)
   }
 
   /**

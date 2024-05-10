@@ -563,8 +563,8 @@ export class OpDeleteDoc {
    * @return {import('./dbtypes.js').OpValue<OpDeleteDoc>}
    */
   static merge (ops, _gc) {
-    // we only want to retain the last op of the user with the highest client-id
-    return array.fold(ops, ops[0], (o1, o2) => o1.client > o2.client ? o1 : o2)
+    // we retain the op with the lowest localClock
+    return array.fold(ops, ops[0], (o1, o2) => o1.localClock < o2.localClock ? o1 : o2)
   }
 
   /**
