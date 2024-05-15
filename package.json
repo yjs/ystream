@@ -52,6 +52,10 @@
       "types": "./dist/src/dbtypes.d.ts",
       "default": "./src/dbtypes.js"
     },
+    "./api/actions": {
+      "types": "./dist/src/actions.d.ts",
+      "default": "./src/actions.js"
+    },
     "./fs": {
       "types": "./dist/src/extensions/fs.d.ts",
       "default": "./src/extensions/fs.js"

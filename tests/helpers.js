@@ -1,6 +1,7 @@
 import * as promise from 'lib0/promise'
 import * as t from 'lib0/testing' // eslint-disable-line
 import * as Ystream from '../src/index.js'
+import * as actions from '@y/stream/api/actions'
 import * as Y from 'yjs'
 import * as array from 'lib0/array'
 import * as wscomm from '../src/comms/websocket.js'
@@ -12,6 +13,7 @@ import * as buffer from 'lib0/buffer'
 import * as dbtypes from '../src/dbtypes.js'
 import * as decoding from 'lib0/decoding'
 import * as ecdsa from 'lib0/crypto/ecdsa'
+import * as fun from 'lib0/function'
 
 /**
  * New test runs shouldn't reuse old data
@@ -157,4 +159,16 @@ export const waitDocsSynced = (ydoc1, ydoc2) =>
     const e1 = Y.encodeStateAsUpdateV2(ydoc1)
     const e2 = Y.encodeStateAsUpdateV2(ydoc2)
     return array.equalFlat(e1, e2)
+  })
+
+/**
+ * @param {Ystream.Collection} ycollection1
+ * @param {Ystream.Collection} ycollection2
+ */
+export const waitCollectionsSynced = (ycollection1, ycollection2) =>
+  promise.untilAsync(async () => {
+    const sv1 = await actions.getStateVector(ycollection1.ystream, ycollection1.ownerBin, ycollection1.collection)
+    const sv2 = await actions.getStateVector(ycollection2.ystream, ycollection2.ownerBin, ycollection2.collection)
+    console.log({ sv1, sv2 })
+    return fun.equalityDeep(sv1, sv2)
   })

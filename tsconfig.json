@@ -22,6 +22,7 @@
       "@y/stream/fs": ["./src/extensions/fs.js"],
       "@y/stream/utils/websocket": ["./src/utils/websocket.browser.js"],
       "@y/stream/api/authentication": ["./src/api/authentication.js"],
+      "@y/stream/api/actions": ["./src/api/actions.js"],
       "@y/stream/comms/ws": ["./src/comms/websocket.js"],
       "@y/stream/api/dbtypes": ["./src/dbtypes.js"]
     }

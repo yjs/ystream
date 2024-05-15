@@ -429,6 +429,24 @@ export const getClock = async (ystream, clientid, owner, collection) =>
   })
 
 /**
+ * Retrieve all clientid<>confirmed_clock pairs for a specific collection
+ *
+ * Generally, it is discouraged to use this function. Usually, there is no need to do a full state
+ * comparison. However, this can be useful for writing tests.
+ *
+ * @param {Ystream} ystream
+ * @param {Uint8Array} owner
+ * @param {string} collection
+ */
+export const getStateVector = async (ystream, owner, collection) =>
+  ystream.db.transact(async tr => {
+    const entries = await tr.tables.clocks.getEntries({ prefix: { owner, collection } })
+    return entries.map(({ key: client, value: clockDef }) => {
+      return { client: client.clientid, clock: clockDef.clock }
+    })
+  })
+
+/**
  * Confirm that a all updates of a doc/collection/* from a client have been received.
  *
  * @param {Ystream} ystream

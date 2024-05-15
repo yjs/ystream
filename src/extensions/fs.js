@@ -26,8 +26,10 @@ export default class Yfs extends observable.ObservableV2 {
      * @type {Array<{ clock: number, docid: string }>}
      */
     this._filesToRender = []
-    // @todo start consuming starting at last checkpoint
-    this.ystream.on('ops', (ops, _origin) => {
+    /**
+     * @type {(ops: Array<any>, origin: any) => void}
+     */
+    this._opsObserver = (ops, _origin) => {
       console.log({ ops })
       for (let i = 0; i < ops.length; i++) {
         const op = ops[i]
@@ -37,15 +39,23 @@ export default class Yfs extends observable.ObservableV2 {
       if (this._filesToRender.length === ops.length) {
         _renderFiles(this)
       }
-    })
+    }
+    // @todo start consuming starting at last checkpoint
+    this.ystream.on('ops', this._opsObserver)
 
-    chokidar.watch(observePath, { ignoreInitial: false, ignored: /\.ystream/ })
+    this.chokidarWatch = chokidar.watch(observePath, { ignoreInitial: false, ignored: /\.ystream/ })
       .on('all', (type, cwdPath) => {
         const observeRelPath = path.relative(observePath, cwdPath)
         if (observeRelPath === '' || observeRelPath === '.' || observeRelPath.startsWith('..')) return
         _eventsToCompute.push({ type, path: observeRelPath })
         if (_eventsToCompute.length === 1) _computeEvents(this)
       })
+  }
+
+  async destroy () {
+    super.destroy()
+    this.ystream.off('ops', this._opsObserver)
+    await this.chokidarWatch.close()
   }
 }
 

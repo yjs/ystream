@@ -342,16 +342,29 @@ export class ClocksKey {
   }
 
   /**
+   * @param {{ owner: Uint8Array, collection:string }} prefix
+   */
+  static prefix ({ owner, collection }) {
+    return encoding.encode(encoder => {
+      encoding.writeUint8(encoder, 3)
+      if (owner) {
+        encoding.writeVarUint8Array(encoder, owner)
+        encoding.writeVarString(encoder, collection)
+      }
+    })
+  }
+
+  /**
    * @param {encoding.Encoder} encoder
    */
   encode (encoder) {
     const info = (this.owner ? 1 : 0) | (this.collection ? 2 : 0)
     encoding.writeUint8(encoder, info)
-    encoding.writeUint32(encoder, this.clientid)
     if (this.owner) {
       encoding.writeVarUint8Array(encoder, this.owner)
       this.collection && encoding.writeVarString(encoder, this.collection)
     }
+    encoding.writeUint32(encoder, this.clientid)
   }
 
   /**
@@ -360,9 +373,9 @@ export class ClocksKey {
    */
   static decode (decoder) {
     const info = decoding.readUint8(decoder)
-    const clientid = decoding.readUint32(decoder)
     const owner = (info & 1) > 0 ? decoding.readVarUint8Array(decoder) : null
     const collection = (info & 2) > 0 ? decoding.readVarString(decoder) : null
+    const clientid = decoding.readUint32(decoder)
     return new ClocksKey(clientid, owner, collection)
   }
 }
