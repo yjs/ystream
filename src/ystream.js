@@ -76,7 +76,7 @@ export class Ystream extends ObservableV2 {
     /**
      * @type {isodb.IDB<typeof db.def>}
      */
-    this.db = _db
+    this._db = _db
     this.acceptNewUsers = acceptNewUsers
     /**
      * @type {Map<string,Map<string,Collection>>}
@@ -130,6 +130,11 @@ export class Ystream extends ObservableV2 {
         this.commHandlers.add(comm.init(this))
       )
     })
+    this._tr = null
+    /**
+     * @type {Array<Promise<any>>}
+     */
+    this._childTrs = []
   }
 
   /**
@@ -140,6 +145,44 @@ export class Ystream extends ObservableV2 {
     return map.setIfUndefined(map.setIfUndefined(this.collections, owner, map.create), collection, () => new Collection(this, owner, collection))
   }
 
+  /**
+   * @template T
+   * @param {(tr:import('isodb').ITransaction<typeof import('./db.js').def>) => Promise<T>} f
+   * @return {Promise<T>}
+   */
+  transact (f) {
+    return this._db.transact(async tr => {
+      this._tr = tr
+      let res
+      try {
+        res = await f(tr)
+        while (this._childTrs.length > 0) {
+          const p = promise.all(this._childTrs)
+          this._childTrs = []
+          await p
+        }
+      } finally {
+        this._tr = null
+        this._childTrs = []
+      }
+      return res
+    })
+  }
+
+  /**
+   * @template T
+   * @param {(tr:import('isodb').ITransaction<typeof import('./db.js').def>) => Promise<T>} f
+   * @return {Promise<T>}
+   */
+  childTransaction (f) {
+    if (this._tr) {
+      const p = f(this._tr)
+      this._childTrs.push(p)
+      return p
+    }
+    return this.transact(f)
+  }
+
   destroy () {
     this.collections.forEach(owner => {
       owner.forEach(collection => {
@@ -148,7 +191,7 @@ export class Ystream extends ObservableV2 {
     })
     this.comms.forEach(comm => comm.destroy())
     bc.unsubscribe('@y/stream#' + this.dbname, this._esub)
-    return this.db.destroy()
+    return this._db.destroy()
   }
 }
 

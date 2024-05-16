@@ -34,7 +34,7 @@ export const bindydoc = async (ystream, owner, collection, doc, ydoc) => {
       actions.addOp(ystream, ownerBin, collection, doc, new operations.OpYjsUpdate(update))
     }
   })
-  const updates = await ystream.db.transact(async () => {
+  const updates = await ystream.childTransaction(async () => {
     const [
       updates,
       isDeleted

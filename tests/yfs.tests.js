@@ -25,6 +25,11 @@ export const testYfsBasics = async tc => {
   const yfs2 = new Yfs(ycollection2, { observePath: './tmp/clone' })
   await ycollection1.setLww('k', 'v')
   await helpers.waitCollectionsSynced(ycollection1, ycollection2)
+  await promise.untilAsync(() => {
+    const numOfInitFiles = number.parseInt(cp.execSync('find ./tmp/init | wc -l').toString()) - 1
+    const numOfClonedFiles = number.parseInt(cp.execSync('find ./tmp/clone | wc -l').toString()) - 1
+    return numOfClonedFiles === numOfInitFiles
+  })
   const numOfInitFiles = number.parseInt(cp.execSync('find ./tmp/init | wc -l').toString()) - 1
   const numOfClonedFiles = number.parseInt(cp.execSync('find ./tmp/clone | wc -l').toString()) - 1
   console.log({ numOfClonedFiles, numOfInitFiles })

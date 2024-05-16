@@ -51,7 +51,7 @@ export const createOpsReader = (ystream, startClock, owner, collection) => {
     async pull (controller) {
       if (registeredListener) return
       console.log('desired size: ', controller.desiredSize, { nextClock })
-      return ystream.db.transact(async tr => {
+      return ystream.transact(async tr => {
         do {
           /**
            * @type {Array<dbtypes.OpValue>}
@@ -139,7 +139,7 @@ export const createOpsReader = (ystream, startClock, owner, collection) => {
  * @param {Uint8Array} owner
  * @param {string} collection
  */
-export const getUnsyncedDocs = (ystream, owner, collection) => ystream.db.transact(async tr => {
+export const getUnsyncedDocs = (ystream, owner, collection) => ystream.childTransaction(async tr => {
   const ud = await tr.tables.unsyncedDocs.getKeys({ start: new dbtypes.UnsyncedKey(owner, collection, ''), end: new dbtypes.UnsyncedKey(owner, collection, null) })
   const ds = await promise.all(ud.map(async u => {
     const np = await getDocOpsLast(ystream, owner, collection, /** @type {string} */ (u.doc), operations.OpNoPermissionType)
@@ -178,7 +178,7 @@ const _updateOpClocksHelper = (ystream, updates) => updates.map(update => {
  * @return {Promise<Array<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>>>}
  */
 export const getDocOps = async (ystream, owner, collection, doc, type, startLocalClock = 0, endLocalClock = number.HIGHEST_UINT32) => {
-  const entries = await ystream.db.transact(tr =>
+  const entries = await ystream.childTransaction(tr =>
     tr.tables.oplog.indexes.doc.getEntries({
       start: new dbtypes.DocKey(type, owner, collection, doc, startLocalClock),
       end: new dbtypes.DocKey(type, owner, collection, doc, endLocalClock)
@@ -197,7 +197,7 @@ export const getDocOps = async (ystream, owner, collection, doc, type, startLoca
  * @return {Promise<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>|null>}
  */
 export const getDocOpsLast = async (ystream, owner, collection, doc, type) => {
-  const entries = await ystream.db.transact(tr =>
+  const entries = await ystream.childTransaction(tr =>
     tr.tables.oplog.indexes.doc.getEntries({
       start: new dbtypes.DocKey(type, owner, collection, doc, 0),
       end: new dbtypes.DocKey(type, owner, collection, doc, number.HIGHEST_UINT32),
@@ -248,7 +248,7 @@ export const isDocDeleted = async (ystream, owner, collection, docid, endLocalCl
  * @param {string} collection
  * @param {string} docid
  */
-export const deleteDoc = (ystream, owner, collection, docid) => ystream.db.transact(async _tr => {
+export const deleteDoc = (ystream, owner, collection, docid) => ystream.childTransaction(async _tr => {
   const isDeleted = await isDocDeleted(ystream, owner, collection, docid)
   if (!isDeleted) {
     await addOp(ystream, owner, collection, docid, new operations.OpDeleteDoc())
@@ -263,7 +263,7 @@ export const deleteDoc = (ystream, owner, collection, docid) => ystream.db.trans
  * @return {Promise<Array<{ docid: string, docname: string }>>}
  */
 export const getDocChildren = async (ystream, owner, collection, parent) => {
-  const entries = await ystream.db.transact(tr =>
+  const entries = await ystream.childTransaction(tr =>
     tr.tables.childDocs.getEntries({
       prefix: { owner, collection, parent }
     })
@@ -282,7 +282,7 @@ export const getDocChildren = async (ystream, owner, collection, parent) => {
  * @param {string} parentid
  * @return {Promise<Array<ParentChildMapping>>}
  */
-export const getDocChildrenRecursive = (ystream, owner, collection, parentid) => ystream.db.transact(async tr => {
+export const getDocChildrenRecursive = (ystream, owner, collection, parentid) => ystream.childTransaction(async tr => {
   const childrenOps = await tr.tables.childDocs.getEntries({
     prefix: { owner, collection, parent: parentid }
   })
@@ -305,7 +305,7 @@ export const getDocChildrenRecursive = (ystream, owner, collection, parentid) =>
  * @param {Array<string>} path
  * @return {Promise<Array<string>>}
  */
-export const getDocIdsFromNamePath = (ystream, owner, collection, rootid, path) => ystream.db.transact(async tr => {
+export const getDocIdsFromNamePath = (ystream, owner, collection, rootid, path) => ystream.childTransaction(async tr => {
   if (path.length === 0) return []
   const children = await tr.tables.childDocs.getValues({ prefix: { owner, collection, parent: rootid, docname: path[0] } })
   if (path.length === 1) return children.map(c => c.v)
@@ -320,7 +320,7 @@ export const getDocIdsFromNamePath = (ystream, owner, collection, rootid, path) 
  * @param {number} [endLocalClock]
  * @return {Promise<Array<{ docid: string, docname: string | null }>>}
  */
-export const getDocPath = (ystream, owner, collection, doc, endLocalClock) => ystream.db.transact(async _tr => { // exec in a single db transaction
+export const getDocPath = (ystream, owner, collection, doc, endLocalClock) => ystream.childTransaction(async _tr => { // exec in a single db transaction
   /**
    * @type {string | null}
    */
@@ -352,7 +352,7 @@ export const getDocPath = (ystream, owner, collection, doc, endLocalClock) => ys
  * @return {Promise<dbtypes.OpValue<TYPE>|null>}
  */
 export const mergeDocOps = (ystream, owner, collection, doc, type, endLocalClock) =>
-  ystream.db.transact(async tr => {
+  ystream.childTransaction(async tr => {
     const [
       allOps,
       docDeleted
@@ -397,7 +397,7 @@ const filterDuplicateNoPermIndexes = noperms => {
  * @return {Promise<Array<dbtypes.DocKey>>}
  */
 export const getNoPerms = async (ystream, owner, collection) =>
-  ystream.db.transact(tr =>
+  ystream.childTransaction(tr =>
     tr.tables.oplog.indexes.doc.getKeys({ prefix: { type: operations.OpNoPermissionType, owner, collection } })
       .then(ks => filterDuplicateNoPermIndexes(ks || []))
   )
@@ -409,7 +409,7 @@ export const getNoPerms = async (ystream, owner, collection) =>
  * @param {string?} collection
  */
 export const getClock = async (ystream, clientid, owner, collection) =>
-  ystream.db.transact(async tr => {
+  ystream.childTransaction(async tr => {
     if (ystream.clientid === clientid) {
       const latestEntry = await tr.tables.oplog.getKeys({
         end: number.HIGHEST_UINT32, // @todo change to uint
@@ -439,7 +439,7 @@ export const getClock = async (ystream, clientid, owner, collection) =>
  * @param {string} collection
  */
 export const getStateVector = async (ystream, owner, collection) =>
-  ystream.db.transact(async tr => {
+  ystream.childTransaction(async tr => {
     const entries = await tr.tables.clocks.getEntries({ prefix: { owner, collection } })
     return entries.map(({ key: client, value: clockDef }) => {
       return { client: client.clientid, clock: clockDef.clock }
@@ -457,7 +457,7 @@ export const getStateVector = async (ystream, owner, collection) =>
  * @param {number} localClock
  */
 export const confirmClientClock = async (ystream, clientid, owner, collection, newClock, localClock) => {
-  ystream.db.transact(async tr => {
+  ystream.childTransaction(async tr => {
     const currClock = await getClock(ystream, clientid, owner, collection)
     if (currClock < newClock) {
       tr.tables.clocks.set(new dbtypes.ClocksKey(clientid, owner, collection), new dbtypes.ClientClockValue(newClock, localClock))
@@ -473,7 +473,7 @@ export const confirmClientClock = async (ystream, clientid, owner, collection, n
  * @param {operations.OpTypes} opv
  */
 export const addOp = async (ystream, owner, collection, doc, opv) => {
-  const op = await ystream.db.transact(async tr => {
+  const op = await ystream.childTransaction(async tr => {
     const op = new dbtypes.OpValue(ystream.clientid, 0, owner, collection, doc, opv)
     const key = await tr.tables.oplog.add(op)
     op.clock = key.v
@@ -489,7 +489,7 @@ export const addOp = async (ystream, owner, collection, doc, opv) => {
  * @param {Ystream} ystream
  */
 export const getClocks = ystream =>
-  ystream.db.transactReadonly(async tr => {
+  ystream.childTransaction(async tr => {
     const entries = await tr.tables.clocks.getEntries({})
     /**
      * @type {Map<string,Map<number,dbtypes.ClientClockValue>>}
@@ -518,7 +518,7 @@ export const applyRemoteOps = async (ystream, ops, user, origin) => {
    * @type {Array<dbtypes.OpValue<any>>}
    */
   const filteredOpsPermsChecked = []
-  await ystream.db.transact(async tr => {
+  await ystream.transact(async tr => {
     /**
      * Maps from encoded(collection/doc/clientid) to clock
      * @type {Map<string,number>}

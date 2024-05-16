@@ -3,7 +3,6 @@ import * as db from './db.js'
 import { Ystream } from './ystream.js'
 export { Ystream, Collection } from './ystream.js'
 
-
 export const remove = isodb.deleteDB
 
 /**

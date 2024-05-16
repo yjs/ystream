@@ -85,7 +85,7 @@ const getFileContent = async (yfs, docid) => {
 const _renderFiles = async (yfs) => {
   const filesToRender = yfs._filesToRender
   while (yfs._filesToRender.length > 0) {
-    await yfs.ystream.db.transact(async () => {
+    await yfs.ystream.childTransaction(async () => {
       // perform a max of 100 changes before creating a new transaction
       for (let i = 0; i < 100 && filesToRender.length > 0; i++) {
         const { docid, clock: opClock } = filesToRender[0]
@@ -144,7 +144,7 @@ const _eventsToCompute = []
 const _computeEvents = async yfs => {
   const ycollection = yfs.ycollection
   while (_eventsToCompute.length > 0) {
-    await yfs.ystream.db.transact(async () => {
+    await yfs.ystream.childTransaction(async () => {
       for (let iterations = 0; _eventsToCompute.length > 0 && iterations < 30; iterations++) {
         const event = _eventsToCompute[0]
         const arrPath = event.path.split('/')

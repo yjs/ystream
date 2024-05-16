@@ -228,7 +228,7 @@ const readInfo = async (encoder, decoder, ystream, comm) => {
     comm.destroy()
     error.unexpectedCase()
   }
-  await ystream.db.transact(async tr => {
+  await ystream.transact(async tr => {
     const currClaim = await tr.tables.devices.indexes.hash.get(deviceClaim.hash)
     if (currClaim == null) {
       await tr.tables.devices.add(deviceClaim)
@@ -266,7 +266,7 @@ const readChallengeAnswer = async (decoder, comm) => {
  */
 export const writeChallengeAnswer = async (encoder, ystream, challenge, comm) => {
   encoding.writeUint8(encoder, messageChallengeAnswer)
-  await ystream.db.transact(async tr => {
+  await ystream.transact(async tr => {
     const pk = await tr.objects.device.get('private')
     if (pk == null) error.unexpectedCase()
     const jwt = await jose.encodeJwt(pk.key, {

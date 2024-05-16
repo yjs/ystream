@@ -164,7 +164,7 @@ class WebSocketCommInstance extends ObservableV2 {
     }, handler])
     this.on('authenticated', async () => {
       const encoder = encoding.createEncoder()
-      await ystream.db.transact(() =>
+      await ystream.transact(() =>
         promise.all(map.map(ystream.collections, (cols, _owner) => {
           const owner = buffer.fromBase64(_owner)
           return promise.all(map.map(cols, (_, collection) =>
