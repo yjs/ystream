@@ -99,6 +99,7 @@ const _renderFiles = async (yfs) => {
         if (docnamee == null) {
           console.log('docname should not be empty') // @todo
           filesToRender.shift()
+          return
           // error.unexpectedCase()
         } else if (ycontent == null) {
           console.log('removing file/dir ', { strPath })

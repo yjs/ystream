@@ -28,12 +28,10 @@ export const testYfsBasics = async tc => {
   await promise.untilAsync(() => {
     const numOfInitFiles = number.parseInt(cp.execSync('find ./tmp/init | wc -l').toString()) - 1
     const numOfClonedFiles = number.parseInt(cp.execSync('find ./tmp/clone | wc -l').toString()) - 1
+    console.log({ numOfClonedFiles, numOfInitFiles })
     return numOfClonedFiles === numOfInitFiles
-  })
-  const numOfInitFiles = number.parseInt(cp.execSync('find ./tmp/init | wc -l').toString()) - 1
-  const numOfClonedFiles = number.parseInt(cp.execSync('find ./tmp/clone | wc -l').toString()) - 1
-  console.log({ numOfClonedFiles, numOfInitFiles })
-  t.assert(numOfClonedFiles === numOfInitFiles)
+  }, 0, 300)
+  t.info('successfully synced')
   yfs1.destroy()
   yfs2.destroy()
   await th.destroy()

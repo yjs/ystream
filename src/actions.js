@@ -478,8 +478,8 @@ export const addOp = async (ystream, owner, collection, doc, opv) => {
     const key = await tr.tables.oplog.add(op)
     op.clock = key.v
     op.localClock = key.v
-    await opv.integrate(ystream, tr, op)
     tr.tables.clocks.set(new dbtypes.ClocksKey(op.client, owner, collection), new dbtypes.ClientClockValue(op.clock, op.clock))
+    await opv.integrate(ystream, tr, op)
     return op
   })
   emitOpsEvent(ystream, [op], ystream)
@@ -566,12 +566,11 @@ export const applyRemoteOps = async (ystream, ops, user, origin) => {
       }
     }))
     // 1. Filter ops that have already been applied 2. apply ops 3. update clocks table
-    await promise.all(filteredOps.map(async op => {
+    for (let i = 0; i < filteredOps.length; i++) {
+      const op = filteredOps[i]
       const colperms = permissions.get(buffer.toBase64(op.owner))?.get(op.collection)
       if (colperms?.get('*') || colperms?.get(op.doc)) {
         const localClock = await tr.tables.oplog.add(op)
-        // @todo integrating concurrently might not work well in all cases. (at least not
-        // efficiently)
         op.localClock = localClock.v
         await op.op.integrate(ystream, tr, op)
         clientClockEntries.set(encodeClocksKey(op.client, op.owner, op.collection), new dbtypes.ClientClockValue(op.clock, op.localClock))
@@ -579,7 +578,7 @@ export const applyRemoteOps = async (ystream, ops, user, origin) => {
       } else {
         console.log('Not applying op because of missing permission', op, ystream.syncsEverything, user.hash, user.isTrusted)
       }
-    }))
+    }
     clientClockEntries.forEach((clockValue, encClocksKey) => {
       const clocksKey = dbtypes.ClocksKey.decode(decoding.createDecoder(buffer.fromBase64(encClocksKey)))
       tr.tables.clocks.set(clocksKey, clockValue)

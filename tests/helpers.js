@@ -171,4 +171,4 @@ export const waitCollectionsSynced = (ycollection1, ycollection2) =>
     const sv2 = await actions.getStateVector(ycollection2.ystream, ycollection2.ownerBin, ycollection2.collection)
     console.log({ sv1, sv2 })
     return fun.equalityDeep(sv1, sv2)
-  })
+  }, 0, 100)
