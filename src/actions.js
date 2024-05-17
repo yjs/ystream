@@ -6,7 +6,6 @@ import * as map from 'lib0/map'
 import * as math from 'lib0/math'
 import * as number from 'lib0/number'
 import * as promise from 'lib0/promise'
-import * as isodb from 'isodb'
 import * as Y from 'yjs'
 import * as dbtypes from './dbtypes.js'
 import * as operations from './operations.js'
@@ -16,6 +15,7 @@ import * as decoding from 'lib0/decoding'
 import { emitOpsEvent } from './ystream.js'
 import * as authorization from './api/authorization.js'
 import * as protocol from './protocol.js'
+import * as isodb from 'isodb'
 
 /**
  * @typedef {import('./ystream.js').Ystream} Ystream
@@ -41,11 +41,15 @@ export const createOpsReader = (ystream, startClock, owner, collection) => {
   const stream = new ReadableStream({
     start (controller) {
       listener = (ops, origin) => {
-        nextClock = ops[ops.length - 1].localClock + 1
         if (collection != null) {
-          ops = ops.filter(op => op.collection === collection && op.owner)
+          ops = ops.filter(op => op.localClock >= nextClock && op.collection === collection && array.equalFlat(op.owner, /** @type {Uint8Array} */ (owner)))
+        } else {
+          ops = ops.filter(op => op.localClock >= nextClock)
         }
-        controller.enqueue({ messages: ops, origin })
+        if (ops.length > 0) {
+          nextClock = ops[ops.length - 1].localClock + 1
+          controller.enqueue({ messages: ops, origin })
+        }
       }
     },
     async pull (controller) {
@@ -53,68 +57,43 @@ export const createOpsReader = (ystream, startClock, owner, collection) => {
       console.log('desired size: ', controller.desiredSize, { nextClock })
       return ystream.transact(async tr => {
         do {
-          /**
-           * @type {Array<dbtypes.OpValue>}
-           */
-          let ops = []
-          if (owner != null && collection != null) {
-            const colEntries = await tr.tables.oplog.indexes.collection.getEntries({
+          const ops = owner != null && collection != null
+            ? await tr.tables.oplog.indexes.collection.getEntries({
               start: new dbtypes.CollectionKey(owner, collection, nextClock),
               end: new dbtypes.CollectionKey(owner, collection, number.HIGHEST_UINT32),
               limit: 3000
-            })
-            ops = colEntries.map(entry => {
-              entry.value.localClock = entry.fkey.v
-              if (entry.value.client === ystream.clientid) {
-                entry.value.clock = entry.fkey.v
-              }
-              return entry.value
-            })
-            if (ops.length > 0) {
-              nextClock = ops[ops.length - 1].localClock + 1
-            }
-          }
-          if (ops.length === 0) {
-            const entries = await tr.tables.oplog.getEntries({
+            }).then(colEntries => _updateOpClocksHelper(ystream, colEntries))
+            : await tr.tables.oplog.getEntries({
               start: new isodb.AutoKey(nextClock),
               limit: 3000
-            })
-            ops = entries.map(entry => {
-              entry.value.localClock = entry.key.v
-              if (entry.value.client === ystream.clientid) {
-                entry.value.clock = entry.key.v
+            }).then(colEntries => colEntries.map(update => {
+              update.value.localClock = update.key.v
+              if (update.value.client === ystream.clientid) {
+                update.value.clock = update.key.v
               }
-              return entry.value
-            })
-            if (ops.length > 0) {
-              nextClock = ops[ops.length - 1].localClock + 1
-            }
-            if (owner != null && collection != null) {
-              ops = ops.filter(op => op.collection === collection && array.equalFlat(op.owner, owner))
-            }
+              return update.value
+            }))
+          if (ops.length > 0) {
+            nextClock = ops[ops.length - 1].localClock + 1
           }
           if (ops.length === 0) {
-            if (ystream._eclock == null && nextClock !== 0) {
-              ystream._eclock = nextClock
-            }
-            if (ystream._eclock === null || nextClock >= ystream._eclock) {
-              console.log('sending synced step')
-              controller.enqueue({
-                messages: [
-                  encoding.encode(encoder => {
-                    if (owner != null && collection != null) {
-                      protocol.writeSynced(encoder, owner, collection, nextClock)
-                    } else {
-                      protocol.writeSyncedAll(encoder, nextClock)
-                    }
-                  })
-                ],
-                origin: 'db'
-              })
-              registeredListener = true
-              ystream.on('ops', /** @type {(ops: Array<dbtypes.OpValue>) => void} */ (listener))
-              break
-            }
+            nextClock = math.max(ystream._eclock || 0, nextClock)
+            console.log('sending synced step')
+            controller.enqueue({
+              messages: [
+                encoding.encode(encoder => {
+                  if (owner != null && collection != null) {
+                    protocol.writeSynced(encoder, owner, collection, nextClock)
+                  } else {
+                    protocol.writeSyncedAll(encoder, nextClock)
+                  }
+                })
+              ],
+              origin: 'db'
+            })
+            registeredListener = true
+            ystream.on('ops', /** @type {(ops: Array<dbtypes.OpValue>) => void} */ (listener))
+            break
           }
           while (ops.length > 0) {
             controller.enqueue({ messages: ops.splice(0, 1000), origin: 'db' })
@@ -153,17 +132,17 @@ export const getUnsyncedDocs = (ystream, owner, collection) => ystream.childTran
 
 /**
  * @template {operations.OpTypes|operations.AbstractOp} OP
- * @template {{ value: dbtypes.OpValue<OP>, fkey: isodb.AutoKey }} UPDATE
+ * @template {{ value: dbtypes.OpValue<OP>, fkey: import('isodb').AutoKey }} UPDATE
  * @param {Ystream} ystream
  * @param {Array<UPDATE>} updates
- * @return {Array<UPDATE>}
+ * @return {Array<UPDATE["value"]>}
  */
 const _updateOpClocksHelper = (ystream, updates) => updates.map(update => {
   update.value.localClock = update.fkey.v
   if (update.value.client === ystream.clientid) {
     update.value.clock = update.fkey.v
   }
-  return update
+  return update.value
 })
 
 /**
@@ -184,7 +163,7 @@ export const getDocOps = async (ystream, owner, collection, doc, type, startLoca
       end: new dbtypes.DocKey(type, owner, collection, doc, endLocalClock)
     })
   )
-  return /** @type {Array<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>>} */ (_updateOpClocksHelper(ystream, entries).map(entry => entry.value))
+  return /** @type {Array<dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>>} */ (_updateOpClocksHelper(ystream, entries))
 }
 
 /**
@@ -205,7 +184,7 @@ export const getDocOpsLast = async (ystream, owner, collection, doc, type) => {
       reverse: true
     })
   )
-  return /** @type {dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>} */ (_updateOpClocksHelper(ystream, entries)[0].value) || null
+  return /** @type {dbtypes.OpValue<InstanceType<operations.typeMap[TYPE]>>} */ (_updateOpClocksHelper(ystream, entries)[0]) || null
 }
 
 /**

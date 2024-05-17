@@ -400,7 +400,6 @@ export class OpChildOf {
    * @param {encoding.Encoder} encoder
    */
   encode (encoder) {
-    console.log({ parent: this.parent, this: this })
     if (this.parent === undefined) debugger
     // bit0: has parent
     // bit1: has childname

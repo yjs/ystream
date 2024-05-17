@@ -6,7 +6,7 @@ import * as Ystream from '../src/index.js'
 import * as helpers from './helpers.js'
 import * as error from 'lib0/error'
 import * as authentication from '../src/api/authentication.js'
-// import * as actions from '../src/actions.js'
+import * as actions from '../src/actions.js'
 // import * as operations from '../src/operations.js'
 
 /**
@@ -162,7 +162,12 @@ export const testLww = async tc => {
   await collection2.setLww('key', 'val2')
   t.assert(await collection2.getLww('key') === 'val2')
   while (true) {
-    if (await collection1.getLww('key') === await collection2.getLww('key')) break
+    const lw1 = await collection1.getLww('key')
+    const lw2 = await collection2.getLww('key')
+    const sv1 = await actions.getStateVector(collection1.ystream, collection1.ownerBin, collection1.collection)
+    const sv2 = await actions.getStateVector(collection2.ystream, collection2.ownerBin, collection2.collection)
+    console.log({ lw1, lw2, sv1, sv2 })
+    if (lw1 === lw2) break
     await promise.wait(100)
   }
   t.info('lww value converged')

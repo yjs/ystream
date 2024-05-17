@@ -11,6 +11,7 @@ import * as dbtypes from './dbtypes.js' // eslint-disable-line
 import * as bc from 'lib0/broadcastchannel'
 import * as operations from './operations.js'
 import * as buffer from 'lib0/buffer'
+import * as eventloop from 'lib0/eventloop'
 
 /**
  * @typedef {Object} YstreamConf
@@ -20,12 +21,61 @@ import * as buffer from 'lib0/buffer'
  */
 
 /**
- * @param {dbtypes.OpValue} a
- * @param {dbtypes.OpValue} b
+ * Join two lists of ops (sorted by localClock) into a single list while filtering out duplicates.
+ *
+ * ops from `bs` will be preferred if the localClock matches.
+ *
+ * @param {Array<dbtypes.OpValue>} as
+ * @param {Array<dbtypes.OpValue>} bs
+ * @param {number} nextExpectedClock the value of localClock of the last op added to joined
  */
-const _sortOpsHelper = (a, b) => a.localClock - b.localClock
+const _joinOpArrays = (as, bs, nextExpectedClock) => {
+  if (as.length === 0) return bs
+  if (bs.length === 0) return as
+  let ai = 0
+  let bi = 0
+  /**
+   * @type {Array<dbtypes.OpValue>}
+   */
+  const joined = []
+  while (ai < as.length && bi < bs.length) {
+    const a = as[ai]
+    const b = bs[bi]
+    if (a.localClock < nextExpectedClock) {
+      ai++
+    } else if (b.localClock < nextExpectedClock) {
+      bi++
+    } else if (a.localClock < b.localClock) {
+      ai++
+      joined.push(a)
+      nextExpectedClock = a.localClock + 1
+    } else {
+      bi++
+      joined.push(b)
+      nextExpectedClock = b.localClock + 1
+    }
+  }
+
+  // push the rest to joined
+  if (ai < as.length) {
+    while (ai < as.length && as[ai].localClock < nextExpectedClock) { ai++ }
+    joined.push(...as.slice(ai))
+  }
+  if (bi < bs.length) {
+    while (bi < bs.length && bs[bi].localClock < nextExpectedClock) { bi++ }
+    joined.push(...bs.slice(bi))
+  }
+  return joined
+}
 
 /**
+ * Fires the `ops` event.
+ *
+ * The `ops` event guarantees that ops are emitted in-order (sorted by localClock).
+ *
+ * However, because of async ops from other threads, we can't guarantee that `_emitOpsEvent`
+ * receives ops in order. So we need to wait before emitting ops.
+ *
  * @param {Ystream} ystream
  * @param {Array<dbtypes.OpValue>} ops
  * @param {any} origin
@@ -34,16 +84,26 @@ const _emitOpsEvent = (ystream, ops, origin) => {
   if (ops.length === 0) {
     return
   }
-  const eclock = ystream._eclock
-  ops.sort(_sortOpsHelper)
-  if (eclock == null || ops[0].localClock === eclock) {
-    ystream.emit('ops', [ops, origin, true])
-    ystream._eclock = ops[ops.length - 1].localClock + 1
-  } else {
-    // error.unexpectedCase()
-    console.warn('Ops are applied in wrong order - @todo')
-    ystream.emit('ops', [ops, origin, true])
-    ystream._eclock = ops[ops.length - 1].localClock + 1
+  ystream._nextEmitOps = _joinOpArrays(ystream._nextEmitOps, ops, ystream._eclock ?? -1)
+  if (
+    ystream._emitTimeout === null && ystream._nextEmitOps.length > 0
+    // && (ystream._eclock == null || ystream._nextEmitOps[0].localClock === ystream._eclock)
+  ) {
+    ystream._emitTimeout = eventloop.timeout(0, () => {
+      ystream._emitTimeout = null
+      const nextEmitOps = ystream._nextEmitOps
+      let eclock = ystream._eclock ?? nextEmitOps[0].localClock
+      let emitNowRange = 0
+      for (;
+        emitNowRange < nextEmitOps.length && nextEmitOps[emitNowRange].localClock === eclock;
+        emitNowRange++, eclock++
+      ) { /* nop */ }
+      const emitNow = nextEmitOps.splice(0, emitNowRange)
+      ystream._eclock = eclock
+      if (emitNow.length > 0) {
+        ystream.emit('ops', [emitNow, origin, true])
+      }
+    })
   }
 }
 
@@ -55,7 +115,7 @@ const _emitOpsEvent = (ystream, ops, origin) => {
 export const emitOpsEvent = (ystream, ops, origin) => {
   if (ops.length > 0) {
     _emitOpsEvent(ystream, ops, origin)
-    bc.publish('@y/stream#' + ystream.dbname, ops.map(op => op.localClock), ystream)
+    bc.publish('@y/stream#' + ystream.dbname, ops[ops.length - 1].localClock, ystream)
   }
 }
 
@@ -101,16 +161,26 @@ export class Ystream extends ObservableV2 {
     this.isAuthenticated = false
     this.whenAuthenticated = promise.create(resolve => this.once('authenticate', resolve))
     /**
-     * Clock of latest emitted clock.
+     * Next expected localClock for emitting ops.
      * @type {number|null}
      */
     this._eclock = null
     /**
-     * Subscribe to broadcastchannel event that is fired whenever an op is added to the database.
+     * Ops that will be emitted next.
+     * @type {Array<dbtypes.OpValue>}
      */
-    this._esub = bc.subscribe('@y/stream#' + this.dbname, /** @param {Array<number>} opids */ async (opids, origin) => {
+    this._nextEmitOps = []
+    /**
+     * @type {eventloop.TimeoutObject?}
+     */
+    this._emitTimeout = null
+    /**
+     * Subscribe to broadcastchannel event that is fired whenever an op is added to the database.
+     * The localClock of the last op will be emitted.
+     */
+    this._esub = bc.subscribe('@y/stream#' + this.dbname, /** @param {number} lastOpId */ async (lastOpId, origin) => {
       if (origin !== this) {
-        console.log('received ops via broadcastchannel', opids[0])
+        console.log('received ops via broadcastchannel', lastOpId)
         // @todo reintroduce pulling from a database
         // const ops = await actions.getOps(this, opids[0])
         // _emitOpsEvent(this, ops, 'broadcastchannel')
@@ -287,6 +357,7 @@ export class Collection extends ObservableV2 {
    * @param {string} childname
    */
   async setDocParent (childid, parentDoc, childname) {
+    if (parentDoc === undefined) throw new Error('parentDoc must not be undefined') // @todo remove!
     const co = await actions.getDocOpsMerged(this.ystream, this.ownerBin, this.collection, childid, operations.OpChildOfType)
     await actions.addOp(this.ystream, this.ownerBin, this.collection, childid, new operations.OpChildOf(co?.op.cnt || 0, parentDoc, childname))
   }

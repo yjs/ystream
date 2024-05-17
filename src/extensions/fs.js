@@ -181,7 +181,7 @@ const _computeEvents = async yfs => {
             const newChildId = random.uuidv4() + '-dir-' + event.path
             console.log({ parentDocId })
             ycollection.setDocParent(newChildId, parentDocId, fileName)
-            ycollection.setLww(newChildId, {})
+            await ycollection.setLww(newChildId, {}) // regarding await: make sure that this document exists before continuing
             break
           }
         }
