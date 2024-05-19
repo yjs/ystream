@@ -169,7 +169,6 @@ const readRequestOps = async (decoder, ystream, comm) => {
   // @todo add method to filter by owner & collection
   actions.createOpsReader(ystream, nextClock, owner, collection).pipeTo(comm.writer, { signal: comm.streamController.signal }).catch((reason) => {
     console.log('ended pipe', { reason, isDestroyed: comm.isDestroyed })
-    // if (reason !== 'destroyed') debugger
   })
 }
 

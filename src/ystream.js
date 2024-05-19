@@ -216,6 +216,8 @@ export class Ystream extends ObservableV2 {
   }
 
   /**
+   * @todo Transactions should have an origin, children should only be added if they have the same
+   * origin, never to system transactions
    * @template T
    * @param {(tr:import('isodb').ITransaction<typeof import('./db.js').def>) => Promise<T>} f
    * @return {Promise<T>}
@@ -339,8 +341,8 @@ export class Collection extends ObservableV2 {
    * @param {Array<string>} path
    * @return {Promise<Array<string>>}
    */
-  getDocIdsFromNamePath (rootid, path) {
-    return actions.getDocIdsFromNamePath(this.ystream, this.ownerBin, this.collection, rootid, path)
+  getDocIdsFromPath (rootid, path) {
+    return actions.getDocIdsFromPath(this.ystream, this.ownerBin, this.collection, rootid, path)
   }
 
   /**
@@ -399,7 +401,7 @@ export class Collection extends ObservableV2 {
    */
   async setLww (key, val) {
     const lww = await actions.getDocOpsMerged(this.ystream, this.ownerBin, this.collection, key, operations.OpLwwType)
-    await actions.addOp(this.ystream, this.ownerBin, this.collection, key, new operations.OpLww(lww?.op.cnt || 0, val))
+    await actions.addOp(this.ystream, this.ownerBin, this.collection, key, new operations.OpLww(1 + (lww?.op.cnt || 0), val))
     return lww === null ? undefined : lww.op.val
   }
 

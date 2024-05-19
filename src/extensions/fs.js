@@ -33,7 +33,7 @@ export default class Yfs extends observable.ObservableV2 {
       console.log({ ops })
       for (let i = 0; i < ops.length; i++) {
         const op = ops[i]
-        console.log('doc added to files to render', { docid: op.doc, type: op.op.type, op: op.op })
+        console.log('doc added to files to render', { docid: op.doc, type: op.op.type, op: op.op, opC: op.op.val?.toString?.().slice(0, 50) })
         this._filesToRender.push({ clock: op.localClock, docid: op.doc })
       }
       if (this._filesToRender.length === ops.length) {
@@ -43,11 +43,15 @@ export default class Yfs extends observable.ObservableV2 {
     // @todo start consuming starting at last checkpoint
     this.ystream.on('ops', this._opsObserver)
 
-    this.chokidarWatch = chokidar.watch(observePath, { ignoreInitial: false, ignored: /\.ystream/ })
+    this.chokidarWatch = chokidar.watch(observePath, { ignoreInitial: false, ignored: /\.ystream/ /*, awaitWriteFinish: true */ })
       .on('all', (type, cwdPath) => {
         const observeRelPath = path.relative(observePath, cwdPath)
         if (observeRelPath === '' || observeRelPath === '.' || observeRelPath.startsWith('..')) return
-        _eventsToCompute.push({ type, path: observeRelPath })
+        let content = null
+        if (type === 'add' || type === 'change') {
+          content = fs.readFileSync(path.join(observePath, observeRelPath))
+        }
+        _eventsToCompute.push({ type, path: observeRelPath, content })
         if (_eventsToCompute.length === 1) _computeEvents(this)
       })
   }
@@ -85,7 +89,7 @@ const getFileContent = async (yfs, docid) => {
 const _renderFiles = async (yfs) => {
   const filesToRender = yfs._filesToRender
   while (yfs._filesToRender.length > 0) {
-    await yfs.ystream.childTransaction(async () => {
+    await yfs.ystream.transact(async () => {
       // perform a max of 100 changes before creating a new transaction
       for (let i = 0; i < 100 && filesToRender.length > 0; i++) {
         const { docid, clock: opClock } = filesToRender[0]
@@ -93,7 +97,7 @@ const _renderFiles = async (yfs) => {
         const docPath = await yfs.ycollection.getDocPath(docid, ycontent == null ? opClock - 1 : opClock)
         const docnamee = docPath[docPath.length - 1].docname
         const docdeleted = await yfs.ycollection.isDocDeleted(docid)
-        console.log({ docnamee, docdeleted, docid, ycontent, docPath, opClock })
+        console.log({ docnamee, docdeleted, docid, ycontent: /** @type {any} */ (ycontent)?.content?.toString?.().slice(0, 50) || ycontent, docPath, opClock })
         docPath.shift()
         const strPath = path.join(yfs.observedPath, docPath.map(p => p.docname).join('/'))
         if (docnamee == null) {
@@ -107,19 +111,23 @@ const _renderFiles = async (yfs) => {
             const docPath2 = await yfs.ycollection.getDocPath(docid, ycontent == null ? opClock - 1 : opClock)
             console.log({ docPath2 })
           }
-          const stat = fs.statSync(strPath)
-          if (stat.isDirectory()) {
-            fs.rmdirSync(strPath)
-          } else if (stat.isFile()) {
-            fs.rmSync(strPath)
-          } else {
-            console.log('File doesnt exist anymore')
+          try {
+            const stat = fs.statSync(strPath)
+            if (stat.isDirectory()) {
+              fs.rmdirSync(strPath)
+            } else if (stat.isFile()) {
+              fs.rmSync(strPath)
+            } else {
+              console.log('File doesnt exist anymore')
+            }
+          } catch (e) {
+            console.log('error in fs.stat', e)
           }
         } else if (ycontent.type === 'binaryFile') {
           console.log('trying to read file', { strPath, docPath })
           const fileContent = fs.existsSync(strPath) ? fs.readFileSync(strPath) : null
           if (fileContent == null || !array.equalFlat(fileContent, ycontent.content)) {
-            console.log('writing file', { docPath, strPath, ycontent, ypath: docPath })
+            console.log('writing file', { docPath, strPath, ycontent: /** @type {any} */ (ycontent).content?.toString?.().slice(0, 50) || ycontent, fileContent: fileContent?.toString?.().slice(0, 50), ypath: docPath })
             fs.writeFileSync(strPath, ycontent.content)
             console.log('file written!', { strPath })
           }
@@ -136,7 +144,7 @@ const _renderFiles = async (yfs) => {
 }
 
 /**
- * @type {Array<{ type: string, path: string }>}}
+ * @type {Array<{ type: string, path: string, content: string|Buffer|null }>}}
  */
 const _eventsToCompute = []
 /**
@@ -145,43 +153,62 @@ const _eventsToCompute = []
 const _computeEvents = async yfs => {
   const ycollection = yfs.ycollection
   while (_eventsToCompute.length > 0) {
-    await yfs.ystream.childTransaction(async () => {
-      for (let iterations = 0; _eventsToCompute.length > 0 && iterations < 30; iterations++) {
+    await yfs.ystream.transact(async () => {
+      for (let iterations = 0; _eventsToCompute.length > 0 && iterations < 300; iterations++) {
         const event = _eventsToCompute[0]
-        const arrPath = event.path.split('/')
+        const arrPath = event.path.split(path.sep)
         const filePath = arrPath.slice(0, -1)
         const fileName = arrPath[arrPath.length - 1]
-
-        console.log(event.type, { path: event.path, filePath, fileName })
+        console.log(event.type, { path: event.path, filePath, fileName, content: event.content?.toString?.().slice(0, 50) || event.content })
         switch (event.type) {
-          case 'add': {
-            const parentDocId = filePath.length === 0 ? 'root' : await ycollection.getDocIdsFromNamePath('root', filePath).then(ids => ids[0])
-            const newChildId = random.uuidv4() + '-file-' + event.path
-            ycollection.setDocParent(newChildId, parentDocId, fileName)
-            ycollection.setLww(newChildId, fs.readFileSync(path.join(yfs.observedPath, event.path)))
-            break
-          }
+          case 'add':
           case 'change': {
-            const docid = await ycollection.getDocIdsFromNamePath('root', arrPath).then(ids => ids[0])
-            ycollection.setLww(docid, fs.readFileSync(path.join(yfs.observedPath, event.path)))
+            console.log('ids for path', {
+              filePath,
+              ids: await ycollection.getDocIdsFromPath('root', filePath)
+            })
+            const parentDocId = filePath.length === 0 ? 'root' : await ycollection.getDocIdsFromPath('root', filePath).then(ids => ids[0])
+            const docid = await ycollection.getDocIdsFromPath(parentDocId, [fileName]).then(ids => ids.length > 0 ? ids[0] : null)
+            if (docid) {
+              const currContent = await ycollection.getLww(docid)
+              console.log('updating file', { filePath, currContent: Buffer.from(currContent).toString().slice(0, 50), eventContent: event.content?.toString().slice(0, 50) })
+              if (Buffer.isBuffer(event.content) && currContent instanceof Uint8Array && array.equalFlat(currContent, event.content)) {
+                console.log('nop...')
+                // nop
+              } else {
+                await ycollection.setLww(docid, event.content)
+              }
+            } else {
+              console.log('creating file', { filePath, eventContent: event.content?.toString().slice(0, 50) })
+              const newChildId = random.uuidv4() + '-file-' + event.path
+              ycollection.setDocParent(newChildId, parentDocId, fileName)
+              await ycollection.setLww(newChildId, event.content)
+            }
             break
           }
-          case 'unlink': {
-            const docid = await ycollection.getDocIdsFromNamePath('root', arrPath).then(ids => ids[0])
-            ycollection.deleteDoc(docid)
-            break
-          }
+          case 'unlink':
           case 'unlinkDir': {
-            const docid = await ycollection.getDocIdsFromNamePath('root', arrPath).then(ids => ids[0])
-            ycollection.deleteDoc(docid)
+            const docid = await ycollection.getDocIdsFromPath('root', arrPath).then(ids => ids[0])
+            await ycollection.deleteDoc(docid)
             break
           }
           case 'addDir': {
-            const parentDocId = filePath.length === 0 ? 'root' : await ycollection.getDocIdsFromNamePath('root', filePath).then(ids => ids[0])
-            const newChildId = random.uuidv4() + '-dir-' + event.path
-            console.log({ parentDocId })
-            ycollection.setDocParent(newChildId, parentDocId, fileName)
-            await ycollection.setLww(newChildId, {}) // regarding await: make sure that this document exists before continuing
+            const parentDocId = filePath.length === 0 ? 'root' : await ycollection.getDocIdsFromPath('root', filePath).then(ids => ids[0])
+            const docid = await ycollection.getDocIdsFromPath(parentDocId, [fileName]).then(ids => ids.length > 0 ? ids[0] : null)
+            if (docid) {
+              const currContent = await ycollection.getLww(docid)
+              if (currContent.constructor === Object) { // exists and is already a directory
+                // nop
+              } else {
+                await ycollection.setLww(docid, {})
+              }
+            } else {
+              const newChildId = random.uuidv4() + '-dir-' + event.path
+              console.log({ parentDocId })
+              ycollection.setDocParent(newChildId, parentDocId, fileName)
+              await ycollection.setLww(newChildId, {}) // regarding await: make sure that this document exists before continuing
+            }
+
             break
           }
         }

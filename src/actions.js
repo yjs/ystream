@@ -230,6 +230,8 @@ export const isDocDeleted = async (ystream, owner, collection, docid, endLocalCl
 export const deleteDoc = (ystream, owner, collection, docid) => ystream.childTransaction(async _tr => {
   const isDeleted = await isDocDeleted(ystream, owner, collection, docid)
   if (!isDeleted) {
+    const children = await getDocChildren(ystream, owner, collection, docid)
+    await promise.all(children.map(child => deleteDoc(ystream, owner, collection, child.docid)))
     await addOp(ystream, owner, collection, docid, new operations.OpDeleteDoc())
   }
 })
@@ -284,11 +286,11 @@ export const getDocChildrenRecursive = (ystream, owner, collection, parentid) =>
  * @param {Array<string>} path
  * @return {Promise<Array<string>>}
  */
-export const getDocIdsFromNamePath = (ystream, owner, collection, rootid, path) => ystream.childTransaction(async tr => {
+export const getDocIdsFromPath = (ystream, owner, collection, rootid, path) => ystream.childTransaction(async tr => {
   if (path.length === 0) return []
   const children = await tr.tables.childDocs.getValues({ prefix: { owner, collection, parent: rootid, docname: path[0] } })
   if (path.length === 1) return children.map(c => c.v)
-  return promise.all(children.map(child => getDocIdsFromNamePath(ystream, owner, collection, child.v, path.slice(1)))).then(res => res.flat(1))
+  return promise.all(children.map(child => getDocIdsFromPath(ystream, owner, collection, child.v, path.slice(1)))).then(res => res.flat(1))
 })
 
 /**

@@ -23,15 +23,24 @@ export const testYfsBasics = async tc => {
   const [{ collection: ycollection1 }, { collection: ycollection2 }] = await th.createClients(2)
   const yfs1 = new Yfs(ycollection1, { observePath: './tmp/init' })
   const yfs2 = new Yfs(ycollection2, { observePath: './tmp/clone' })
+  const waitFilesSynced = async () => {
+    await helpers.waitCollectionsSynced(ycollection1, ycollection2)
+    await promise.untilAsync(() => {
+      const numOfInitFiles = number.parseInt(cp.execSync('find ./tmp/init | wc -l').toString()) - 1
+      const numOfClonedFiles = number.parseInt(cp.execSync('find ./tmp/clone | wc -l').toString()) - 1
+      console.log({ numOfClonedFiles, numOfInitFiles })
+      return numOfClonedFiles === numOfInitFiles
+    }, 0, 300)
+  }
   await ycollection1.setLww('k', 'v')
-  await helpers.waitCollectionsSynced(ycollection1, ycollection2)
-  await promise.untilAsync(() => {
-    const numOfInitFiles = number.parseInt(cp.execSync('find ./tmp/init | wc -l').toString()) - 1
-    const numOfClonedFiles = number.parseInt(cp.execSync('find ./tmp/clone | wc -l').toString()) - 1
-    console.log({ numOfClonedFiles, numOfInitFiles })
-    return numOfClonedFiles === numOfInitFiles
-  }, 0, 300)
-  t.info('successfully synced')
+  await waitFilesSynced()
+  t.info('successfully synced initial files')
+  cp.execSync('rm -rf ./tmp/clone/actions.js')
+  await waitFilesSynced()
+  t.info('successfully synced file delete')
+  cp.execSync('rm -rf ./tmp/clone/api')
+  await waitFilesSynced()
+  t.info('successfully synced folder delete')
   yfs1.destroy()
   yfs2.destroy()
   await th.destroy()

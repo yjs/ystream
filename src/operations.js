@@ -400,7 +400,6 @@ export class OpChildOf {
    * @param {encoding.Encoder} encoder
    */
   encode (encoder) {
-    if (this.parent === undefined) debugger
     // bit0: has parent
     // bit1: has childname
     encoding.writeUint8(encoder, (this.parent === null ? 0 : 1) | (this.childname === null ? 0 : 2))
