@@ -297,6 +297,47 @@ export const getDocIdsFromPath = (ystream, owner, collection, rootid, path) => y
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
+ * @param {string} childid
+ * @param {string|null} parentDoc
+ * @param {string} childname
+ * @return {Promise<void>}
+ */
+export const setDocParent = (ystream, owner, collection, childid, parentDoc, childname) => ystream.childTransaction(async _tr => {
+  if (parentDoc === undefined) throw new Error('parentDoc must not be undefined') // @todo remove!
+  const co = await getDocOpsMerged(ystream, owner, collection, childid, operations.OpChildOfType)
+  await addOp(ystream, owner, collection, childid, new operations.OpChildOf(co?.op.cnt || 0, parentDoc, childname))
+})
+
+/**
+ * @param {Ystream} ystream
+ * @param {Uint8Array} owner
+ * @param {string} collection
+ * @param {string} key
+ * @param {any} val
+ * @return {Promise<void>}
+ */
+export const setLww = (ystream, owner, collection, key, val) => ystream.childTransaction(async _tr => {
+  const lww = await getDocOpsMerged(ystream, owner, collection, key, operations.OpLwwType)
+  await addOp(ystream, owner, collection, key, new operations.OpLww(1 + (lww?.op.cnt || 0), val))
+  return lww === null ? undefined : lww.op.val
+})
+
+/**
+ * @param {Ystream} ystream
+ * @param {Uint8Array} owner
+ * @param {string} collection
+ * @param {string} key
+ * @return {Promise<void>}
+ */
+export const getLww = (ystream, owner, collection, key) => ystream.childTransaction(async _tr => {
+  const lww = await getDocOpsMerged(ystream, owner, collection, key, operations.OpLwwType)
+  return lww === null ? undefined : lww.op.val
+})
+
+/**
+ * @param {Ystream} ystream
+ * @param {Uint8Array} owner
+ * @param {string} collection
  * @param {string} doc
  * @param {number} [endLocalClock]
  * @return {Promise<Array<{ docid: string, docname: string | null }>>}

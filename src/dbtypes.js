@@ -529,6 +529,10 @@ export class ParentKey {
    * @param {number} localClock
    */
   constructor (owner, collection, parent, childname, localClock) {
+    if (parent == null) {
+      console.warn('unexpected parent=undefined')
+      debugger
+    }
     this.owner = owner
     this.collection = collection
     this.parent = parent

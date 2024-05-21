@@ -7,6 +7,8 @@ import * as promise from 'lib0/promise'
 import * as array from 'lib0/array'
 import * as observable from 'lib0/observable'
 import * as error from 'lib0/error'
+import * as Ystream from '@y/stream' // eslint-disable-line
+import * as actions from '@y/stream/api/actions' // eslint-disable-line
 
 /**
  * @extends {observable.ObservableV2<{}>}
@@ -132,8 +134,13 @@ const _renderFiles = async (yfs) => {
             console.log('file written!', { strPath })
           }
         } else {
+          console.log('checking if folder exists', { strPath })
           if (!fs.existsSync(strPath)) {
+            console.log(strPath, ' does notexist , lets creat it..')
             fs.mkdirSync(strPath)
+            console.log('folder exists now', {
+              strPath, exists: fs.existsSync(strPath)
+            })
           }
         }
         filesToRender.shift()
@@ -144,6 +151,36 @@ const _renderFiles = async (yfs) => {
 }
 
 /**
+ * Creates a document and creates parent documents as necessary. Works similarly to `mkdir -p`.
+ *
+ * @param {Ystream.Ystream} ystream
+ * @param {Uint8Array} owner
+ * @param {string} collection
+ * @param {string} rootid
+ * @param {Array<string>} path
+ * @return {Promise<{ docid: string, isNew: boolean }>}
+ */
+export const mkPath = (ystream, owner, collection, rootid, path) => ystream.childTransaction(async tr => {
+  let isNew = false
+  if (path.length === 0) return { docid: rootid, isNew }
+  let children = await tr.tables.childDocs.getValues({ prefix: { owner, collection, parent: rootid, docname: path[0] } }).then(cs => cs.map(c => c.v))
+  if (children.length === 0) {
+    const newChildId = random.uuidv4() + path.join('/')
+    isNew = true
+    actions.setDocParent(ystream, owner, collection, newChildId, rootid, path[0])
+    if (path.length > 1) {
+      // created doc is a directory
+      actions.setLww(ystream, owner, collection, newChildId, {})
+    }
+    children = [newChildId]
+  }
+  if (path.length === 1) {
+    return { docid: children[0], isNew }
+  }
+  return mkPath(ystream, owner, collection, children[0], path.slice(1))
+})
+
+/**
  * @type {Array<{ type: string, path: string, content: string|Buffer|null }>}}
  */
 const _eventsToCompute = []
@@ -152,6 +189,7 @@ const _eventsToCompute = []
  */
 const _computeEvents = async yfs => {
   const ycollection = yfs.ycollection
+  console.log('all events to compute', _eventsToCompute)
   while (_eventsToCompute.length > 0) {
     await yfs.ystream.transact(async () => {
       for (let iterations = 0; _eventsToCompute.length > 0 && iterations < 300; iterations++) {
@@ -167,9 +205,11 @@ const _computeEvents = async yfs => {
               filePath,
               ids: await ycollection.getDocIdsFromPath('root', filePath)
             })
-            const parentDocId = filePath.length === 0 ? 'root' : await ycollection.getDocIdsFromPath('root', filePath).then(ids => ids[0])
-            const docid = await ycollection.getDocIdsFromPath(parentDocId, [fileName]).then(ids => ids.length > 0 ? ids[0] : null)
-            if (docid) {
+            const { docid, isNew } = await mkPath(ycollection.ystream, ycollection.ownerBin, ycollection.collection, 'root', arrPath)
+            if (isNew) {
+              console.log('created file', { filePath, eventContent: event.content?.toString().slice(0, 50) })
+              await ycollection.setLww(docid, event.content)
+            } else {
               const currContent = await ycollection.getLww(docid)
               console.log('updating file', { filePath, currContent: Buffer.from(currContent).toString().slice(0, 50), eventContent: event.content?.toString().slice(0, 50) })
               if (Buffer.isBuffer(event.content) && currContent instanceof Uint8Array && array.equalFlat(currContent, event.content)) {
@@ -178,37 +218,29 @@ const _computeEvents = async yfs => {
               } else {
                 await ycollection.setLww(docid, event.content)
               }
-            } else {
-              console.log('creating file', { filePath, eventContent: event.content?.toString().slice(0, 50) })
-              const newChildId = random.uuidv4() + '-file-' + event.path
-              ycollection.setDocParent(newChildId, parentDocId, fileName)
-              await ycollection.setLww(newChildId, event.content)
             }
             break
           }
           case 'unlink':
           case 'unlinkDir': {
             const docid = await ycollection.getDocIdsFromPath('root', arrPath).then(ids => ids[0])
-            await ycollection.deleteDoc(docid)
+            if (docid) {
+              await ycollection.deleteDoc(docid)
+            }
             break
           }
           case 'addDir': {
-            const parentDocId = filePath.length === 0 ? 'root' : await ycollection.getDocIdsFromPath('root', filePath).then(ids => ids[0])
-            const docid = await ycollection.getDocIdsFromPath(parentDocId, [fileName]).then(ids => ids.length > 0 ? ids[0] : null)
-            if (docid) {
+            const { docid, isNew } = await mkPath(ycollection.ystream, ycollection.ownerBin, ycollection.collection, 'root', arrPath)
+            if (isNew) {
+              await ycollection.setLww(docid, {}) // regarding await: make sure that this document exists before continuing
+            } else {
               const currContent = await ycollection.getLww(docid)
               if (currContent.constructor === Object) { // exists and is already a directory
                 // nop
               } else {
                 await ycollection.setLww(docid, {})
               }
-            } else {
-              const newChildId = random.uuidv4() + '-dir-' + event.path
-              console.log({ parentDocId })
-              ycollection.setDocParent(newChildId, parentDocId, fileName)
-              await ycollection.setLww(newChildId, {}) // regarding await: make sure that this document exists before continuing
             }
-
             break
           }
         }

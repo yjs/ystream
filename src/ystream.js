@@ -359,9 +359,7 @@ export class Collection extends ObservableV2 {
    * @param {string} childname
    */
   async setDocParent (childid, parentDoc, childname) {
-    if (parentDoc === undefined) throw new Error('parentDoc must not be undefined') // @todo remove!
-    const co = await actions.getDocOpsMerged(this.ystream, this.ownerBin, this.collection, childid, operations.OpChildOfType)
-    await actions.addOp(this.ystream, this.ownerBin, this.collection, childid, new operations.OpChildOf(co?.op.cnt || 0, parentDoc, childname))
+    return actions.setDocParent(this.ystream, this.ownerBin, this.collection, childid, parentDoc, childname)
   }
 
   /**
@@ -400,9 +398,7 @@ export class Collection extends ObservableV2 {
    * @return the previous values
    */
   async setLww (key, val) {
-    const lww = await actions.getDocOpsMerged(this.ystream, this.ownerBin, this.collection, key, operations.OpLwwType)
-    await actions.addOp(this.ystream, this.ownerBin, this.collection, key, new operations.OpLww(1 + (lww?.op.cnt || 0), val))
-    return lww === null ? undefined : lww.op.val
+    return actions.setLww(this.ystream, this.ownerBin, this.collection, key, val)
   }
 
   /**
