@@ -19,12 +19,13 @@
     "allowSyntheticDefaultImports": true,
     "paths": {
       "@y/stream": ["./src/index.js"],
-      "@y/stream/fs": ["./src/extensions/fs.js"],
       "@y/stream/utils/websocket": ["./src/utils/websocket.browser.js"],
       "@y/stream/api/authentication": ["./src/api/authentication.js"],
       "@y/stream/api/actions": ["./src/api/actions.js"],
-      "@y/stream/comms/ws": ["./src/comms/websocket.js"],
-      "@y/stream/api/dbtypes": ["./src/dbtypes.js"]
+      "@y/stream/api/dbtypes": ["./src/api/dbtypes.js"],
+      "@y/stream/comms/websocket": ["./src/comms/websocket.js"],
+      "@y/stream/comms/websocket-server": ["./src/comms/websocket-server.js"],
+      "@y/stream/extensions/fs": ["./src/extensions/fs.js"]
     }
   },
   "include": ["./src/**/*.js", "./tests/**/*.js", "./demo/**/*.js", "./demo/*.js", "./bin/*.js", "extensions/*.js"],

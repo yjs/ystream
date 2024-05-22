@@ -2,7 +2,7 @@ import * as Y from 'yjs'
 import * as bc from 'lib0/broadcastchannel'
 import * as buffer from 'lib0/buffer'
 import * as env from 'lib0/environment'
-import * as actions from './actions.js'
+import * as actions from './api/actions.js'
 import * as operations from './operations.js'
 import * as promise from 'lib0/promise'
 

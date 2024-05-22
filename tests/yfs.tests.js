@@ -1,7 +1,7 @@
 import fs from 'fs'
 import * as t from 'lib0/testing' // eslint-disable-line
 import * as helpers from './helpers.js'
-import Yfs from '@y/stream/fs'
+import Yfs from '@y/stream/extensions/fs'
 import cp from 'child_process'
 import * as number from 'lib0/number'
 import * as promise from 'lib0/promise'

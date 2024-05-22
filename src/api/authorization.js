@@ -1,5 +1,5 @@
-import * as dbtypes from '../dbtypes.js' // eslint-disable-line
-import * as actions from '../actions.js'
+import * as dbtypes from '../api/dbtypes.js' // eslint-disable-line
+import * as actions from '../api/actions.js'
 import * as operations from '../operations.js'
 import * as buffer from 'lib0/buffer'
 import * as promise from 'lib0/promise'

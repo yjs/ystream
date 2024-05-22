@@ -6,8 +6,8 @@ import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import * as error from 'lib0/error'
 import * as isodb from 'isodb' // eslint-disable-line
-import * as requests from './messages.js'
-import * as operations from './operations.js'
+import * as requests from '../messages.js'
+import * as operations from '../operations.js'
 import * as binary from 'lib0/binary'
 import * as string from 'lib0/string'
 import * as sha256 from 'lib0/hash/sha256'
@@ -529,10 +529,6 @@ export class ParentKey {
    * @param {number} localClock
    */
   constructor (owner, collection, parent, childname, localClock) {
-    if (parent == null) {
-      console.warn('unexpected parent=undefined')
-      debugger
-    }
     this.owner = owner
     this.collection = collection
     this.parent = parent

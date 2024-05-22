@@ -1,7 +1,7 @@
 {
   "name": "@y/stream",
-  "version": "0.0.1",
-  "description": "The fast CRDT database",
+  "version": "0.0.0",
+  "description": "A fast CRDT database",
   "sideEffects": false,
   "type": "module",
   "types": "./dist/src/index.d.ts",
@@ -33,9 +33,13 @@
       "types": "./dist/src/index.d.ts",
       "default": "./src/index.js"
     },
-    "./comms/ws": {
+    "./comms/websocket": {
       "types": "./dist/src/comms/websocket.d.ts",
       "default": "./src/comms/websocket.js"
+    },
+    "./comms/websocket-server": {
+      "types": "./dist/src/comms/websocket-server.d.ts",
+      "default": "./src/comms/websocket-server.js"
     },
     "./utils/websocket": {
       "browser": "./src/utils/websocket.browser.js",
@@ -49,14 +53,14 @@
       "default": "./src/api/authentication.js"
     },
     "./api/dbtypes": {
-      "types": "./dist/src/dbtypes.d.ts",
-      "default": "./src/dbtypes.js"
+      "types": "./dist/src/api/dbtypes.d.ts",
+      "default": "./src/api/dbtypes.js"
     },
     "./api/actions": {
-      "types": "./dist/src/actions.d.ts",
-      "default": "./src/actions.js"
+      "types": "./dist/src/api/actions.d.ts",
+      "default": "./src/api/actions.js"
     },
-    "./fs": {
+    "./extensions/fs": {
       "types": "./dist/src/extensions/fs.d.ts",
       "default": "./src/extensions/fs.js"
     }

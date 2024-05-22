@@ -26,11 +26,11 @@ import * as promise from 'lib0/promise'
 import * as error from 'lib0/error'
 import * as webcrypto from 'lib0/webcrypto'
 import * as authentication from '../api/authentication.js'
-import * as dbtypes from '../dbtypes.js' // eslint-disable-line
+import * as dbtypes from '../api/dbtypes.js' // eslint-disable-line
 import * as utils from '../utils.js'
 import * as logging from 'lib0/logging'
 import * as observable from 'lib0/observable'
-import * as actions from '../actions.js'
+import * as actions from '../api/actions.js'
 
 const expectedBufferedAmount = 512 * 1024 // 512kb
 
@@ -56,11 +56,11 @@ class WSClient extends observable.ObservableV2 {
     this.ystream = ystream
     this.clientid = -1
     /**
-     * @type {import('../dbtypes.js').UserIdentity|null}
+     * @type {import('../api/dbtypes.js').UserIdentity|null}
      */
     this.user = null
     /**
-     * @type {import('../dbtypes.js').DeviceClaim|null}
+     * @type {import('../api/dbtypes.js').DeviceClaim|null}
      */
     this.deviceClaim = null
     this.ws = ws

@@ -6,7 +6,7 @@ import * as Ystream from '../src/index.js'
 import * as helpers from './helpers.js'
 import * as error from 'lib0/error'
 import * as authentication from '../src/api/authentication.js'
-import * as actions from '../src/actions.js'
+import * as actions from '@y/stream/api/actions'
 // import * as operations from '../src/operations.js'
 
 /**

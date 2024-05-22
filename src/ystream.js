@@ -6,8 +6,8 @@ import * as isodb from 'isodb' // eslint-disable-line
 import * as db from './db.js' // eslint-disable-line
 import { ObservableV2 } from 'lib0/observable'
 import * as random from 'lib0/random'
-import * as actions from './actions.js'
-import * as dbtypes from './dbtypes.js' // eslint-disable-line
+import * as actions from './api/actions.js'
+import * as dbtypes from './api/dbtypes.js' // eslint-disable-line
 import * as bc from 'lib0/broadcastchannel'
 import * as operations from './operations.js'
 import * as buffer from 'lib0/buffer'
@@ -385,7 +385,7 @@ export class Collection extends ObservableV2 {
 
   /**
    * @param {string} key
-   * @returns undefined if the value was not defined previously
+   * @returns {any|undefined} undefined if the value was not defined previously
    */
   getLww (key) {
     return actions.getLww(this.ystream, this.ownerBin, this.collection, key)

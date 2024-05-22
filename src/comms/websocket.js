@@ -11,10 +11,10 @@ import { Ystream } from '../ystream.js' // eslint-disable-line
 import * as webcrypto from 'lib0/webcrypto'
 import * as utils from '../utils.js'
 import * as promise from 'lib0/promise'
-import * as dbtypes from '../dbtypes.js' // eslint-disable-line
+import * as dbtypes from '../api/dbtypes.js' // eslint-disable-line
 import * as map from 'lib0/map'
 import * as buffer from 'lib0/buffer'
-import * as actions from '../actions.js'
+import * as actions from '../api/actions.js'
 
 const _log = logging.createModuleLogger('@y/stream/websocket')
 /**
@@ -68,7 +68,7 @@ class WebSocketCommInstance extends ObservableV2 {
     this.isAuthenticated = false
     this.sentChallengeAnswer = false
     /**
-     * @type {import('../dbtypes.js').UserIdentity|null}
+     * @type {import('../api/dbtypes.js').UserIdentity|null}
      */
     this.user = null
     /**
@@ -76,7 +76,7 @@ class WebSocketCommInstance extends ObservableV2 {
      */
     this.challenge = webcrypto.getRandomValues(new Uint8Array(64))
     /**
-     * @type {import('../dbtypes.js').DeviceClaim|null}
+     * @type {import('../api/dbtypes.js').DeviceClaim|null}
      */
     this.deviceClaim = null
     /**

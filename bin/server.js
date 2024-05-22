@@ -3,7 +3,7 @@ import * as json from 'lib0/json'
 import * as buffer from 'lib0/buffer'
 import * as decoding from 'lib0/decoding'
 import * as ecdsa from 'lib0/crypto/ecdsa'
-import * as dbtypes from '../src/dbtypes.js'
+import * as dbtypes from '../src/api/dbtypes.js'
 
 // @todo this seriously should live somewhere else!
 const testServerIdentityRaw = {

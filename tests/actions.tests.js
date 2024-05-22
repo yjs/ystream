@@ -1,7 +1,7 @@
 import * as t from 'lib0/testing'
 import * as utils from '../src/utils.js'
 import * as operations from '../src/operations.js'
-import * as dbtypes from '../src/dbtypes.js'
+import * as dbtypes from '@y/stream/api/dbtypes'
 import { emptyUpdate } from './helpers.js'
 
 const testOwner = new Uint8Array([1, 2, 3])

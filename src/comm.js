@@ -13,7 +13,7 @@ import * as observable from 'lib0/observable'
  */
 
 /**
- * @typedef {import('./dbtypes.js').OpValue} OpValue
+ * @typedef {import('./api/dbtypes.js').OpValue} OpValue
  */
 
 /* c8 ignore start */
@@ -27,12 +27,12 @@ export class Comm extends observable.ObservableV2 {
   get clientid () { return -1 }
   set clientid (_v) { error.methodUnimplemented() }
   /**
-   * @type {import('./dbtypes.js').UserIdentity|null}
+   * @type {import('./api/dbtypes.js').UserIdentity|null}
    */
   get user () { return error.methodUnimplemented() }
   set user (_u) { error.methodUnimplemented() }
   /**
-   * @type {import('./dbtypes.js').DeviceClaim|null}
+   * @type {import('./api/dbtypes.js').DeviceClaim|null}
    */
   get deviceClaim () { return error.methodUnimplemented() }
   set deviceClaim (_u) { error.methodUnimplemented() }
@@ -54,7 +54,7 @@ export class Comm extends observable.ObservableV2 {
   set sentChallengeAnswer (_v) { error.methodUnimplemented() }
 
   /**
-   * @type {WritableStream<{ messages: Array<Uint8Array|import('./dbtypes.js').OpValue>, origin: any }>}
+   * @type {WritableStream<{ messages: Array<Uint8Array|import('./api/dbtypes.js').OpValue>, origin: any }>}
    */
   get writer () { return error.methodUnimplemented() }
   /**

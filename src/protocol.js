@@ -1,10 +1,10 @@
 import { Ystream } from './index.js' // eslint-disable-line
-import * as dbtypes from './dbtypes.js'
+import * as dbtypes from './api/dbtypes.js'
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import * as error from 'lib0/error'
 import * as array from 'lib0/array'
-import * as actions from './actions.js'
+import * as actions from './api/actions.js'
 import * as logging from 'lib0/logging'
 import * as authentication from './api/authentication.js'
 import * as buffer from 'lib0/buffer'

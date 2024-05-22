@@ -1,6 +1,6 @@
 import * as map from 'lib0/map'
 import * as Y from 'yjs'
-import * as dbtypes from './dbtypes.js' // eslint-disable-line
+import * as dbtypes from './api/dbtypes.js' // eslint-disable-line
 import * as operations from './operations.js'
 import * as array from 'lib0/array'
 import * as buffer from 'lib0/buffer'

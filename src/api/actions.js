@@ -8,17 +8,17 @@ import * as number from 'lib0/number'
 import * as promise from 'lib0/promise'
 import * as Y from 'yjs'
 import * as dbtypes from './dbtypes.js'
-import * as operations from './operations.js'
-import * as utils from './utils.js'
+import * as operations from '../operations.js'
+import * as utils from '../utils.js'
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
-import { emitOpsEvent } from './ystream.js'
-import * as authorization from './api/authorization.js'
-import * as protocol from './protocol.js'
+import { emitOpsEvent } from '../ystream.js'
+import * as authorization from '../api/authorization.js'
+import * as protocol from '../protocol.js'
 import * as isodb from 'isodb'
 
 /**
- * @typedef {import('./ystream.js').Ystream} Ystream
+ * @typedef {import('../ystream.js').Ystream} Ystream
  */
 
 /**
@@ -327,7 +327,7 @@ export const setLww = (ystream, owner, collection, key, val) => ystream.childTra
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {string} key
- * @return {Promise<void>}
+ * @return {Promise<any|undefined>}
  */
 export const getLww = (ystream, owner, collection, key) => ystream.childTransaction(async _tr => {
   const lww = await getDocOpsMerged(ystream, owner, collection, key, operations.OpLwwType)

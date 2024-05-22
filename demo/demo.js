@@ -1,6 +1,6 @@
 /* eslint-env browser */
 import * as Ystream from '@y/stream'
-import * as wscomm from '@y/stream/comms/ws'
+import * as wscomm from '@y/stream/comms/websocket'
 import * as authentication from '@y/stream/api/authentication'
 import * as dbtypes from '@y/stream/api/dbtypes'
 import * as Y from 'yjs'
@@ -34,7 +34,7 @@ const testUser = {
 const owner = buffer.toBase64(testUser.user.hash)
 
 const collection = 'my-notes-app'
-const y = await Ystream.open('wss://localhost:3000', {
+const y = await Ystream.open('ystream-demo-app-1', {
   comms: [new wscomm.WebSocketComm('ws://localhost:9000', [{ owner, collection }])]
 })
 

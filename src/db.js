@@ -1,4 +1,4 @@
-import * as dbtypes from './dbtypes.js'
+import * as dbtypes from './api/dbtypes.js'
 import * as isodb from 'isodb'
 import * as webcrypto from 'lib0/webcrypto'
 import * as json from 'lib0/json'

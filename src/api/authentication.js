@@ -1,5 +1,5 @@
 import * as ecdsa from 'lib0/crypto/ecdsa'
-import * as dbtypes from '../dbtypes.js'
+import * as dbtypes from '../api/dbtypes.js'
 import * as jose from 'lib0/crypto/jwt'
 import * as time from 'lib0/time'
 import * as json from 'lib0/json'
@@ -106,7 +106,7 @@ export const getRegisteredUser = (ystream, user) =>
  * @param {Ystream} ystream
  * @param {Uint8Array} userHash
  * @param {string} jwt
- * @return {Promise<import('../dbtypes.js').JwtDeviceClaim | null>}
+ * @return {Promise<import('../api/dbtypes.js').JwtDeviceClaim | null>}
  */
 export const verifyDeviceClaim = (ystream, userHash, jwt) =>
   ystream.childTransaction(async tr => {
