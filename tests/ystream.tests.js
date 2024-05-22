@@ -262,7 +262,7 @@ export const testDeleteDoc = async tc => {
   t.assert(await collection1.getLww(docid) === undefined)
   t.assert(await collection1.getParent(docid) === null)
   t.assert(await collection1.getDocName(docid) === null)
-  collection1.setLww(docid, 'val')
+  await collection1.setLww(docid, 'val')
   t.assert(await collection1.getLww(docid) === undefined)
   // @todo test if deletion works in combination with parents (integration of delete should
   // orphan child docs)

@@ -387,9 +387,8 @@ export class Collection extends ObservableV2 {
    * @param {string} key
    * @returns undefined if the value was not defined previously
    */
-  async getLww (key) {
-    const lww = await actions.getDocOpsMerged(this.ystream, this.ownerBin, this.collection, key, operations.OpLwwType)
-    return lww === null ? undefined : lww.op.val
+  getLww (key) {
+    return actions.getLww(this.ystream, this.ownerBin, this.collection, key)
   }
 
   /**
@@ -397,7 +396,7 @@ export class Collection extends ObservableV2 {
    * @param {any} val
    * @return the previous values
    */
-  async setLww (key, val) {
+  setLww (key, val) {
     return actions.setLww(this.ystream, this.ownerBin, this.collection, key, val)
   }
 

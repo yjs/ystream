@@ -170,7 +170,7 @@ export const mkPath = (ystream, owner, collection, rootid, path) => ystream.chil
     actions.setDocParent(ystream, owner, collection, newChildId, rootid, path[0])
     if (path.length > 1) {
       // created doc is a directory
-      actions.setLww(ystream, owner, collection, newChildId, {})
+      await actions.setLww(ystream, owner, collection, newChildId, {})
     }
     children = [newChildId]
   }
