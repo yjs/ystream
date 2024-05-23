@@ -1,6 +1,6 @@
 {
   "name": "@y/stream",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "A fast CRDT database",
   "sideEffects": false,
   "type": "module",
@@ -28,7 +28,8 @@
     "postpublish": "npm run clean"
   },
   "files": [
-    "dist/src"
+    "dist",
+    "src"
   ],
   "exports": {
     "./package.json": "./package.json",
@@ -72,10 +73,6 @@
     "ystream-server": "./bin/server.js",
     "yfs": "./bin/yfs.js"
   },
-  "files": [
-    "dist",
-    "src"
-  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/yjs/ystream.git"
