@@ -11,7 +11,7 @@
   },
   "scripts": {
     "demo": "npm run clean && rollup -c && concurrently '0serve -o ./demo/index.html' 'rollup -wc' 'npm run ws-server'",
-    "clean": "rm -rf dist .ystream .test_dbs tmp",
+    "clean": "rm -rf dist .ystream .test_dbs tmp coverage",
     "types": "tsc",
     "gentesthtml": "npx 0gentesthtml --script ./tests/index.js > test.html",
     "debug:browser": "npm run gentesthtml && npx 0serve -o test.html",
@@ -24,7 +24,7 @@
     "test-extensive": "node test.js && npm test -- --repetition-time 30000 --extensive",
     "test-code-coverage": "npm run dist && nyc --reporter html node ./dist/test.cjs --production",
     "lint": "standard && tsc",
-    "preversion": "npm run clean && npm run test && npm run types && npm run dist",
+    "preversion": "npm run clean && npm run test && npm run types",
     "postpublish": "npm run clean"
   },
   "exports": {
