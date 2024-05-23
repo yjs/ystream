@@ -167,8 +167,7 @@ export const waitDocsSynced = (ydoc1, ydoc2) =>
  */
 export const waitCollectionsSynced = (ycollection1, ycollection2) =>
   promise.untilAsync(async () => {
-    const sv1 = await actions.getStateVector(ycollection1.ystream, ycollection1.ownerBin, ycollection1.collection)
-    const sv2 = await actions.getStateVector(ycollection2.ystream, ycollection2.ownerBin, ycollection2.collection)
-    console.log({ sv1, sv2 })
+    const sv1 = await ycollection1.ystream.transact(tr => actions.getStateVector(tr, ycollection1.ystream, ycollection1.ownerBin, ycollection1.collection))
+    const sv2 = await ycollection2.ystream.transact(tr => actions.getStateVector(tr, ycollection2.ystream, ycollection2.ownerBin, ycollection2.collection))
     return fun.equalityDeep(sv1, sv2)
   }, 0, 100)

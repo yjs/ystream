@@ -113,7 +113,7 @@ class WSClient extends observable.ObservableV2 {
     })
     this.on('authenticated', async () => {
       const encoder = encoding.createEncoder()
-      const clock = await actions.getClock(ystream, this.clientid, null, null)
+      const clock = await ystream.transact(tr => actions.getClock(tr, ystream, this.clientid, null, null))
       protocol.writeRequestAllOps(encoder, clock)
       this.send(encoding.toUint8Array(encoder))
     })

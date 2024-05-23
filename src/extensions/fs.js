@@ -66,12 +66,13 @@ export default class Yfs extends observable.ObservableV2 {
 }
 
 /**
+ * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
  * @param {Yfs} yfs
  * @param {string} docid
  * @return {Promise<{ type: 'binaryFile', content: Buffer }|{ type: 'dir' }|null>}
  */
-const getFileContent = async (yfs, docid) => {
-  const lc = await yfs.ycollection.getLww(docid)
+const getFileContent = async (tr, yfs, docid) => {
+  const lc = await yfs.ycollection.getLww(tr, docid)
   if (lc == null) {
     return null
   }
@@ -91,14 +92,15 @@ const getFileContent = async (yfs, docid) => {
 const _renderFiles = async (yfs) => {
   const filesToRender = yfs._filesToRender
   while (yfs._filesToRender.length > 0) {
-    await yfs.ystream.transact(async () => {
+    await yfs.ystream.transact(async tr => {
       // perform a max of 100 changes before creating a new transaction
       for (let i = 0; i < 100 && filesToRender.length > 0; i++) {
         const { docid, clock: opClock } = filesToRender[0]
-        const ycontent = await getFileContent(yfs, docid)
-        const docPath = await yfs.ycollection.getDocPath(docid, ycontent == null ? opClock - 1 : opClock)
+        const ycontent = await getFileContent(tr, yfs, docid)
+        actions.getDocPath(tr, yfs.ystream, yfs.ycollection.ownerBin, yfs.ycollection.collection, docid, ycontent == null ? opClock - 1 : opClock)
+        const docPath = await actions.getDocPath(tr, yfs.ystream, yfs.ycollection.ownerBin, yfs.ycollection.collection, docid, ycontent == null ? opClock - 1 : opClock)
         const docnamee = docPath[docPath.length - 1].docname
-        const docdeleted = await yfs.ycollection.isDocDeleted(docid)
+        const docdeleted = await actions.isDocDeleted(tr, yfs.ystream, yfs.ycollection.ownerBin, yfs.ycollection.collection, docid)
         console.log({ docnamee, docdeleted, docid, ycontent: /** @type {any} */ (ycontent)?.content?.toString?.().slice(0, 50) || ycontent, docPath, opClock })
         docPath.shift()
         const strPath = path.join(yfs.observedPath, docPath.map(p => p.docname).join('/'))
@@ -110,7 +112,7 @@ const _renderFiles = async (yfs) => {
         } else if (ycontent == null) {
           console.log('removing file/dir ', { strPath })
           if (strPath === 'tmp/init' || docnamee == null || docPath.length === 0) {
-            const docPath2 = await yfs.ycollection.getDocPath(docid, ycontent == null ? opClock - 1 : opClock)
+            const docPath2 = await yfs.ycollection.getDocPath(tr, docid, ycontent == null ? opClock - 1 : opClock)
             console.log({ docPath2 })
           }
           try {
@@ -153,6 +155,7 @@ const _renderFiles = async (yfs) => {
 /**
  * Creates a document and creates parent documents as necessary. Works similarly to `mkdir -p`.
  *
+ * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
  * @param {Ystream.Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
@@ -160,25 +163,25 @@ const _renderFiles = async (yfs) => {
  * @param {Array<string>} path
  * @return {Promise<{ docid: string, isNew: boolean }>}
  */
-export const mkPath = (ystream, owner, collection, rootid, path) => ystream.childTransaction(async tr => {
+export const mkPath = async (tr, ystream, owner, collection, rootid, path) => {
   let isNew = false
   if (path.length === 0) return { docid: rootid, isNew }
   let children = await tr.tables.childDocs.getValues({ prefix: { owner, collection, parent: rootid, docname: path[0] } }).then(cs => cs.map(c => c.v))
   if (children.length === 0) {
     const newChildId = random.uuidv4() + path.join('/')
     isNew = true
-    actions.setDocParent(ystream, owner, collection, newChildId, rootid, path[0])
+    actions.setDocParent(tr, ystream, owner, collection, newChildId, rootid, path[0])
     if (path.length > 1) {
       // created doc is a directory
-      await actions.setLww(ystream, owner, collection, newChildId, {})
+      await actions.setLww(tr, ystream, owner, collection, newChildId, {})
     }
     children = [newChildId]
   }
   if (path.length === 1) {
     return { docid: children[0], isNew }
   }
-  return mkPath(ystream, owner, collection, children[0], path.slice(1))
-})
+  return mkPath(tr, ystream, owner, collection, children[0], path.slice(1))
+}
 
 /**
  * @type {Array<{ type: string, path: string, content: string|Buffer|null }>}}
@@ -191,7 +194,7 @@ const _computeEvents = async yfs => {
   const ycollection = yfs.ycollection
   console.log('all events to compute', _eventsToCompute)
   while (_eventsToCompute.length > 0) {
-    await yfs.ystream.transact(async () => {
+    await yfs.ystream.transact(async tr => {
       for (let iterations = 0; _eventsToCompute.length > 0 && iterations < 300; iterations++) {
         const event = _eventsToCompute[0]
         const arrPath = event.path.split(path.sep)
@@ -203,42 +206,42 @@ const _computeEvents = async yfs => {
           case 'change': {
             console.log('ids for path', {
               filePath,
-              ids: await ycollection.getDocIdsFromPath('root', filePath)
+              ids: await ycollection.getDocIdsFromPath(tr, 'root', filePath)
             })
-            const { docid, isNew } = await mkPath(ycollection.ystream, ycollection.ownerBin, ycollection.collection, 'root', arrPath)
+            const { docid, isNew } = await mkPath(tr, ycollection.ystream, ycollection.ownerBin, ycollection.collection, 'root', arrPath)
             if (isNew) {
               console.log('created file', { filePath, eventContent: event.content?.toString().slice(0, 50) })
-              await ycollection.setLww(docid, event.content)
+              await ycollection.setLww(tr, docid, event.content)
             } else {
-              const currContent = await ycollection.getLww(docid)
+              const currContent = await ycollection.getLww(tr, docid)
               console.log('updating file', { filePath, currContent: Buffer.from(currContent).toString().slice(0, 50), eventContent: event.content?.toString().slice(0, 50) })
               if (Buffer.isBuffer(event.content) && currContent instanceof Uint8Array && array.equalFlat(currContent, event.content)) {
                 console.log('nop...')
                 // nop
               } else {
-                await ycollection.setLww(docid, event.content)
+                await ycollection.setLww(tr, docid, event.content)
               }
             }
             break
           }
           case 'unlink':
           case 'unlinkDir': {
-            const docid = await ycollection.getDocIdsFromPath('root', arrPath).then(ids => ids[0])
+            const docid = await ycollection.getDocIdsFromPath(tr, 'root', arrPath).then(ids => ids[0])
             if (docid) {
-              await ycollection.deleteDoc(docid)
+              await ycollection.deleteDoc(tr, docid)
             }
             break
           }
           case 'addDir': {
-            const { docid, isNew } = await mkPath(ycollection.ystream, ycollection.ownerBin, ycollection.collection, 'root', arrPath)
+            const { docid, isNew } = await mkPath(tr, ycollection.ystream, ycollection.ownerBin, ycollection.collection, 'root', arrPath)
             if (isNew) {
-              await ycollection.setLww(docid, {}) // regarding await: make sure that this document exists before continuing
+              await ycollection.setLww(tr, docid, {}) // regarding await: make sure that this document exists before continuing
             } else {
-              const currContent = await ycollection.getLww(docid)
+              const currContent = await ycollection.getLww(tr, docid)
               if (currContent.constructor === Object) { // exists and is already a directory
                 // nop
               } else {
-                await ycollection.setLww(docid, {})
+                await ycollection.setLww(tr, docid, {})
               }
             }
             break

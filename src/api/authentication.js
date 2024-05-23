@@ -13,13 +13,15 @@ import * as sha256 from 'lib0/hash/sha256'
  */
 
 /**
+ * @note this must not be called within a transaction, as it will never finish.
+ *
  * @param {Ystream} ystream
  * @param {dbtypes.UserIdentity} userIdentity
  * @param {CryptoKey} publicKey
  * @param {CryptoKey|null} privateKey
  */
-export const setUserIdentity = async (ystream, userIdentity, publicKey, privateKey) =>
-  ystream.childTransaction(async tr => {
+export const setUserIdentity = async (ystream, userIdentity, publicKey, privateKey) => {
+  const deviceIdentity = await ystream.transact(async tr => {
     console.log(ystream.clientid, 'setting user identity', userIdentity.ekey)
     tr.objects.user.set('public', publicKey)
     privateKey && tr.objects.user.set('private', privateKey)
@@ -27,15 +29,15 @@ export const setUserIdentity = async (ystream, userIdentity, publicKey, privateK
     tr.objects.user.set('identity', userIdentity)
     ystream.user = userIdentity
     if (privateKey) {
-      // generate deviceclaim
-      /**
-       * @type {dbtypes.DeviceIdentity}
-       */
-      const deviceIdentity = /** @type {dbtypes.DeviceIdentity} */ (await tr.objects.device.get('identity'))
-      const claim = await createDeviceClaim(ystream, deviceIdentity)
-      await useDeviceClaim(ystream, claim)
+      return /** @type {dbtypes.DeviceIdentity} */ (await tr.objects.device.get('identity'))
     }
+    return null
   })
+  if (deviceIdentity != null) {
+    const claim = await createDeviceClaim(ystream, deviceIdentity)
+    await useDeviceClaim(ystream, claim)
+  }
+}
 
 export const createUserIdentity = async ({ extractable = false } = {}) => {
   const { publicKey, privateKey } = await ecdsa.generateKeyPair({ extractable })
@@ -44,25 +46,29 @@ export const createUserIdentity = async ({ extractable = false } = {}) => {
 }
 
 /**
+ * @note this function must not be awaited inside of a ystream.transact, as it must create its own
+ * transaction.
+ *
  * @param {Ystream} ystream
  * @param {dbtypes.DeviceIdentity} deviceIdentity
  */
-export const createDeviceClaim = (ystream, deviceIdentity) =>
-  ystream.childTransaction(async tr => {
+export const createDeviceClaim = async (ystream, deviceIdentity) => {
+  const { pkey, iss, sub } = await ystream.transact(async tr => {
     const [privateUserKey, user] = await promise.all([
       tr.objects.user.get('private'),
       tr.objects.user.get('identity')
     ])
     if (privateUserKey == null || user == null) error.unexpectedCase()
-    // @todo add type definition to isodb.jwtValue
-    // @todo add expiration date `exp`
-    const jwt = await jose.encodeJwt(privateUserKey.key, {
-      iss: user.ekey,
-      iat: time.getUnixTime(),
-      sub: deviceIdentity.ekey
-    })
-    return jwt
+    return { pkey: privateUserKey.key, iss: user.ekey, sub: deviceIdentity.ekey }
   })
+  // @todo add type definition to isodb.jwtValue
+  // @todo add expiration date `exp`
+  return await jose.encodeJwt(pkey, {
+    iss,
+    iat: time.getUnixTime(),
+    sub
+  })
+}
 
 /**
  * Register user, allowing him to connect to this instance.
@@ -73,7 +79,7 @@ export const createDeviceClaim = (ystream, deviceIdentity) =>
  * @param {boolean} [opts.isTrusted]
  */
 export const registerUser = (ystream, user, { isTrusted = false } = {}) =>
-  ystream.childTransaction(async tr => {
+  ystream.transact(async tr => {
     if ((await tr.tables.users.indexes.hash.get(user.hash)) == null) {
       await tr.tables.users.add(new dbtypes.UserIdentity(user.ekey, { isTrusted }))
     }
@@ -86,7 +92,7 @@ export const registerUser = (ystream, user, { isTrusted = false } = {}) =>
  * @param {dbtypes.UserIdentity} user
  */
 export const isRegisteredUser = (ystream, user) =>
-  ystream.childTransaction(tr =>
+  ystream.transact(tr =>
     tr.tables.users.indexes.hash.get(user.hash)
       .then(ruser => ruser?.ekey === user.ekey)
   )
@@ -98,7 +104,7 @@ export const isRegisteredUser = (ystream, user) =>
  * @param {dbtypes.UserIdentity} user
  */
 export const getRegisteredUser = (ystream, user) =>
-  ystream.childTransaction(tr =>
+  ystream.transact(tr =>
     tr.tables.users.indexes.hash.get(user.hash)
   )
 
@@ -108,30 +114,33 @@ export const getRegisteredUser = (ystream, user) =>
  * @param {string} jwt
  * @return {Promise<import('../api/dbtypes.js').JwtDeviceClaim | null>}
  */
-export const verifyDeviceClaim = (ystream, userHash, jwt) =>
-  ystream.childTransaction(async tr => {
-    const user = await tr.tables.users.indexes.hash.get(userHash)
-    if (user == null) return null
-    const { payload } = await jose.verifyJwt(await user.publicKey, jwt)
-    if (payload.sub !== user.ekey) {
-      return null
-    }
-    return payload
-  })
+export const verifyDeviceClaim = async (ystream, userHash, jwt) => {
+  const user = await ystream.transact(tr =>
+    tr.tables.users.indexes.hash.get(userHash)
+  )
+  if (user == null) return null
+  const { payload } = await jose.verifyJwt(await user.publicKey, jwt)
+  if (payload.sub !== user.ekey) {
+    return null
+  }
+  return payload
+}
 
 /**
  * @param {Ystream} ystream
  * @param {Uint8Array} userHash
  * @param {dbtypes.DeviceClaim} claim
  */
-export const registerDevice = (ystream, userHash, claim) =>
-  ystream.childTransaction(async tr => {
-    const user = await tr.tables.users.indexes.hash.get(userHash)
-    if (user == null) error.unexpectedCase()
-    claim.verify(await user.publicKey)
-    verifyDeviceClaim(ystream, claim.hash, claim.v)
+export const registerDevice = async (ystream, userHash, claim) => {
+  const user = await ystream.transact(tr =>
+    tr.tables.users.indexes.hash.get(userHash)
+  )
+  if (user == null) error.unexpectedCase()
+  await verifyDeviceClaim(ystream, claim.hash, claim.v)
+  await ystream.transact(tr =>
     tr.tables.devices.add(claim)
-  })
+  )
+}
 
 /**
  * @param {Ystream} ystream
@@ -142,20 +151,20 @@ export const useDeviceClaim = async (ystream, jwt) => {
    * @type {any}
    */
   let payload
-  const userPublicKey = await ystream.childTransaction(tr => tr.objects.user.get('public'))
+  const userPublicKey = await ystream.transact(tr => tr.objects.user.get('public'))
   if (userPublicKey != null) {
     payload = await jose.verifyJwt(userPublicKey.key, jwt)
   } else {
     payload = jose.unsafeDecode(jwt)
   }
   const { payload: { sub, iss } } = payload
-  await ystream.childTransaction(async tr => {
-    if (userPublicKey == null) {
-      // ensure that the user identity is set using the public key of the jwt
-      const user = new dbtypes.UserIdentity(iss)
-      await setUserIdentity(ystream, user, await user.publicKey, null)
-    }
-    if (sub == null) error.unexpectedCase()
+  if (userPublicKey == null) {
+    // ensure that the user identity is set using the public key of the jwt
+    const user = new dbtypes.UserIdentity(iss)
+    await setUserIdentity(ystream, user, await user.publicKey, null)
+  }
+  if (sub == null) error.unexpectedCase()
+  await ystream.transact(async tr => {
     // Don't call the constructor manually. This is okay only here. Use DeviceClaim.fromJwt
     // instead.
     const deviceclaim = new dbtypes.DeviceClaim(jwt, sha256.digest(string.encodeUtf8(sub)))
@@ -163,15 +172,15 @@ export const useDeviceClaim = async (ystream, jwt) => {
     tr.tables.devices.add(deviceclaim)
     ystream.deviceClaim = deviceclaim
     ystream.isAuthenticated = true
-    ystream.emit('authenticate', []) // should only be fired on deviceclaim
   })
+  ystream.emit('authenticate', []) // should only be fired on deviceclaim
 }
 
 /**
  * @param {Ystream} ystream
  */
 export const getDeviceIdentity = ystream =>
-  ystream.childTransaction(async tr => {
+  ystream.transact(async tr => {
     const did = await tr.objects.device.get('identity')
     if (did == null) error.unexpectedCase()
     return did
@@ -181,7 +190,7 @@ export const getDeviceIdentity = ystream =>
  * @param {Ystream} ystream
  */
 export const getUserIdentity = ystream =>
-  ystream.childTransaction(async tr => {
+  ystream.transact(async tr => {
     const uid = await tr.objects.user.get('identity')
     if (uid == null) error.unexpectedCase()
     return uid
@@ -190,7 +199,7 @@ export const getUserIdentity = ystream =>
 /**
  * @param {Ystream} ystream
  */
-export const getAllRegisteredUserHashes = ystream => ystream.childTransaction(async tr => {
+export const getAllRegisteredUserHashes = ystream => ystream.transact(async tr => {
   const users = await tr.tables.users.getValues()
   return users.map(user => new Uint8Array(user.hash))
 })

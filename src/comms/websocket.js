@@ -164,11 +164,11 @@ class WebSocketCommInstance extends ObservableV2 {
     }, handler])
     this.on('authenticated', async () => {
       const encoder = encoding.createEncoder()
-      await ystream.transact(() =>
+      await ystream.transact(tr =>
         promise.all(map.map(ystream.collections, (cols, _owner) => {
           const owner = buffer.fromBase64(_owner)
           return promise.all(map.map(cols, (_, collection) =>
-            actions.getClock(ystream, this.clientid, owner, collection).then(clock => {
+            actions.getClock(tr, ystream, this.clientid, owner, collection).then(clock => {
               protocol.writeRequestOps(encoder, owner, collection, clock)
               return clock
             })

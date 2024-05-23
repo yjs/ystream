@@ -32,7 +32,6 @@ export const testYfsBasics = async tc => {
       return numOfClonedFiles === numOfInitFiles
     }, 0, 300)
   }
-  await ycollection1.setLww('k', 'v')
   await waitFilesSynced()
   t.info('successfully synced initial files')
   cp.execSync('rm -rf ./tmp/clone/actions.js')
@@ -48,6 +47,7 @@ export const testYfsBasics = async tc => {
   await waitFilesSynced()
   t.info('succeffsully moved folder')
   cp.execSync('echo newcontent > ./tmp/clone/index.js')
+  await promise.wait(300)
   await waitFilesSynced()
   t.compare(fs.readFileSync('./tmp/init/index.js').toString(), 'newcontent\n')
   t.info('succeffsully edited file')

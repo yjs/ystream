@@ -9,6 +9,7 @@ import * as promise from 'lib0/promise'
  */
 
 /**
+ * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
@@ -16,58 +17,63 @@ import * as promise from 'lib0/promise'
  * @param {dbtypes.UserIdentity} user
  * @param {operations.AccessType} accessType
  */
-export const updateCollaborator = async (ystream, owner, collection, doc, user, accessType) => {
-  const currentPermOp = await actions.getDocOpsMerged(ystream, owner, collection, doc, operations.OpPermType)
+export const updateCollaborator = async (tr, ystream, owner, collection, doc, user, accessType) => {
+  const currentPermOp = await actions.getDocOpsMerged(tr, ystream, owner, collection, doc, operations.OpPermType)
   const op = operations.createOpPermUpdate(currentPermOp?.op || null, buffer.toBase64(user.hash), accessType)
-  actions.addOp(ystream, owner, collection, doc, op)
+  actions.addOp(tr, ystream, owner, collection, doc, op)
 }
 
 /**
+ * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {string} doc
  * @return {Promise<operations.OpPerm>} accessType
  */
-export const getPermOp = async (ystream, owner, collection, doc) =>
-  actions.getDocOpsMerged(ystream, owner, collection, doc, operations.OpPermType).then(opperm => opperm?.op || new operations.OpPerm())
+export const getPermOp = async (tr, ystream, owner, collection, doc) =>
+  actions.getDocOpsMerged(tr, ystream, owner, collection, doc, operations.OpPermType).then(opperm => opperm?.op || new operations.OpPerm())
 
 /**
+ * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {string} doc
  * @param {function(operations.OpPerm):boolean} checker
  */
-const _checkStreamAccess = (ystream, owner, collection, doc, checker) => getPermOp(ystream, owner, collection, doc).then(checker)
+const _checkStreamAccess = (tr, ystream, owner, collection, doc, checker) => getPermOp(tr, ystream, owner, collection, doc).then(checker)
 
 /**
+ * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {string} doc
  * @param {function(operations.OpPerm):boolean} checker
  */
-const checkAccess = async (ystream, owner, collection, doc, checker) => {
-  const hasAccessStream = await _checkStreamAccess(ystream, owner, collection, '*', checker)
+const checkAccess = async (tr, ystream, owner, collection, doc, checker) => {
+  const hasAccessStream = await _checkStreamAccess(tr, ystream, owner, collection, '*', checker)
   if (hasAccessStream) return hasAccessStream
-  return await _checkStreamAccess(ystream, owner, collection, doc, checker)
+  return await _checkStreamAccess(tr, ystream, owner, collection, doc, checker)
 }
 
 /**
+ * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {string} doc
  * @param {dbtypes.UserIdentity} user
  */
-export const hasReadAccess = async (ystream, owner, collection, doc, user) => user.isTrusted ? promise.resolveWith(true) : checkAccess(ystream, owner, collection, doc, opperm => opperm.hasReadAccess(buffer.toBase64(user.hash)))
+export const hasReadAccess = async (tr, ystream, owner, collection, doc, user) => user.isTrusted ? promise.resolveWith(true) : checkAccess(tr, ystream, owner, collection, doc, opperm => opperm.hasReadAccess(buffer.toBase64(user.hash)))
 
 /**
+ * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {string} doc
  * @param {dbtypes.UserIdentity} user
  */
-export const hasWriteAccess = async (ystream, owner, collection, doc, user) => user.isTrusted ? promise.resolveWith(true) : checkAccess(ystream, owner, collection, doc, opperm => opperm.hasWriteAccess(buffer.toBase64(user.hash)))
+export const hasWriteAccess = async (tr, ystream, owner, collection, doc, user) => user.isTrusted ? promise.resolveWith(true) : checkAccess(tr, ystream, owner, collection, doc, opperm => opperm.hasWriteAccess(buffer.toBase64(user.hash)))

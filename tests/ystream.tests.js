@@ -156,16 +156,16 @@ export const testPerformanceSyncingManyDocs = async tc => {
  */
 export const testLww = async tc => {
   const th = await helpers.createTestScenario(tc)
-  const [{ collection: collection1 }, { collection: collection2 }] = await th.createClients(2)
-  await collection1.setLww('key', 'val1')
-  t.assert(await collection1.getLww('key') === 'val1')
-  await collection2.setLww('key', 'val2')
-  t.assert(await collection2.getLww('key') === 'val2')
+  const [{ collection: collection1, ystream: ystream1 }, { collection: collection2, ystream: ystream2 }] = await th.createClients(2)
+  await ystream1.transact(tr => collection1.setLww(tr, 'key', 'val1'))
+  t.assert(await ystream1.transact(tr => collection1.getLww(tr, 'key')) === 'val1')
+  await ystream2.transact(tr => collection2.setLww(tr, 'key', 'val2'))
+  t.assert(await ystream2.transact(tr => collection2.getLww(tr, 'key')) === 'val2')
   while (true) {
-    const lw1 = await collection1.getLww('key')
-    const lw2 = await collection2.getLww('key')
-    const sv1 = await actions.getStateVector(collection1.ystream, collection1.ownerBin, collection1.collection)
-    const sv2 = await actions.getStateVector(collection2.ystream, collection2.ownerBin, collection2.collection)
+    const lw1 = await ystream1.transact(tr => collection1.getLww(tr, 'key'))
+    const lw2 = await ystream2.transact(tr => collection2.getLww(tr, 'key'))
+    const sv1 = await collection1.ystream.transact(tr => actions.getStateVector(tr, collection1.ystream, collection1.ownerBin, collection1.collection))
+    const sv2 = await collection2.ystream.transact(tr => actions.getStateVector(tr, collection2.ystream, collection2.ownerBin, collection2.collection))
     console.log({ lw1, lw2, sv1, sv2 })
     if (lw1 === lw2) break
     await promise.wait(100)
@@ -180,57 +180,59 @@ export const testLww = async tc => {
  */
 export const testFolderStructure = async tc => {
   const th = await helpers.createTestScenario(tc)
-  const [{ collection: collection1 }] = await th.createClients(1)
-  await collection1.setDocParent('A', null, 'a')
-  await collection1.setDocParent('B', 'A', 'b')
-  await collection1.setDocParent('C', 'B', 'c')
-  await collection1.setDocParent('D', 'B', 'd')
-  t.assert(await collection1.getParent('A') === null)
-  const a = await collection1.getParent('B')
-  console.log(a)
-  t.assert(await collection1.getParent('B') === 'A')
-  t.assert(await collection1.getParent('D') === 'B')
-  t.assert(await collection1.getParent('C') === 'B')
-  console.log('docname A:', await collection1.getDocName('A'))
-  t.assert(await collection1.getDocName('A') === 'a')
-  t.assert(await collection1.getDocName('B') === 'b')
-  t.assert(await collection1.getDocName('D') === 'd')
-  t.assert(await collection1.getDocName('C') === 'c')
-  t.compare(await collection1.getDocChildren('A'), [{ docid: 'B', docname: 'b' }])
-  t.compare(await collection1.getDocChildren('B'), [{ docid: 'C', docname: 'c' }, { docid: 'D', docname: 'd' }]) // should return in alphabetical order
-  t.compare(await collection1.getDocPath('A'), [{ docid: 'A', docname: 'a' }])
-  t.compare(await collection1.getDocPath('B'), [{ docid: 'A', docname: 'a' }, { docid: 'B', docname: 'b' }])
-  t.compare(await collection1.getDocPath('D'), [{ docid: 'A', docname: 'a' }, { docid: 'B', docname: 'b' }, { docid: 'D', docname: 'd' }])
-  t.compare(await collection1.getDocChildrenRecursive('A'), [
-    {
-      docid: 'B',
-      docname: 'b',
-      children: [
-        { docid: 'C', docname: 'c', children: [] },
-        { docid: 'D', docname: 'd', children: [] }
-      ]
-    }
-  ])
-  t.compare(await collection1.getDocIdsFromPath('A', ['b']), ['B'])
-  t.compare(await collection1.getDocIdsFromPath('A', ['b', 'c']), ['C'])
-  t.compare(await collection1.getDocIdsFromPath('A', ['c']), [])
-  await collection1.setDocParent('B', null, 'b')
-  t.compare(await collection1.getDocChildrenRecursive('A'), [])
-  t.compare(await collection1.getDocChildrenRecursive('B'), [
-    { docid: 'C', docname: 'c', children: [] },
-    { docid: 'D', docname: 'd', children: [] }
-  ])
-  await collection1.setDocParent('A', 'B', 'a')
-  t.compare(await collection1.getDocChildrenRecursive('B'), [
-    { docid: 'A', docname: 'a', children: [] },
-    { docid: 'C', docname: 'c', children: [] },
-    { docid: 'D', docname: 'd', children: [] }
-  ])
-  // @todo handle concurrent moves: parentless docs (deleted parent) should be moved to an
-  // orphanage. Circles should be detected - the most recent "parent" should be moved to the
-  // orhpanage.
-  // The orhpanage should just be a local container of references. docs don't need to be reparented.
-  // Circles are actually fine as long as the app can work with them.
+  const [{ collection: collection1, ystream: ystream1 }] = await th.createClients(1)
+  await ystream1.transact(async tr => {
+    await collection1.setDocParent(tr, 'A', null, 'a')
+    await collection1.setDocParent(tr, 'B', 'A', 'b')
+    await collection1.setDocParent(tr, 'C', 'B', 'c')
+    await collection1.setDocParent(tr, 'D', 'B', 'd')
+    t.assert(await collection1.getParent(tr, 'A') === null)
+    const a = await collection1.getParent(tr, 'B')
+    console.log(a)
+    t.assert(await collection1.getParent(tr, 'B') === 'A')
+    t.assert(await collection1.getParent(tr, 'D') === 'B')
+    t.assert(await collection1.getParent(tr, 'C') === 'B')
+    console.log('docname A:', await collection1.getDocName(tr, 'A'))
+    t.assert(await collection1.getDocName(tr, 'A') === 'a')
+    t.assert(await collection1.getDocName(tr, 'B') === 'b')
+    t.assert(await collection1.getDocName(tr, 'D') === 'd')
+    t.assert(await collection1.getDocName(tr, 'C') === 'c')
+    t.compare(await collection1.getDocChildren(tr, 'A'), [{ docid: 'B', docname: 'b' }])
+    t.compare(await collection1.getDocChildren(tr, 'B'), [{ docid: 'C', docname: 'c' }, { docid: 'D', docname: 'd' }]) // should return in alphabetical order
+    t.compare(await collection1.getDocPath(tr, 'A'), [{ docid: 'A', docname: 'a' }])
+    t.compare(await collection1.getDocPath(tr, 'B'), [{ docid: 'A', docname: 'a' }, { docid: 'B', docname: 'b' }])
+    t.compare(await collection1.getDocPath(tr, 'D'), [{ docid: 'A', docname: 'a' }, { docid: 'B', docname: 'b' }, { docid: 'D', docname: 'd' }])
+    t.compare(await collection1.getDocChildrenRecursive(tr, 'A'), [
+      {
+        docid: 'B',
+        docname: 'b',
+        children: [
+          { docid: 'C', docname: 'c', children: [] },
+          { docid: 'D', docname: 'd', children: [] }
+        ]
+      }
+    ])
+    t.compare(await collection1.getDocIdsFromPath(tr, 'A', ['b']), ['B'])
+    t.compare(await collection1.getDocIdsFromPath(tr, 'A', ['b', 'c']), ['C'])
+    t.compare(await collection1.getDocIdsFromPath(tr, 'A', ['c']), [])
+    await collection1.setDocParent(tr, 'B', null, 'b')
+    t.compare(await collection1.getDocChildrenRecursive(tr, 'A'), [])
+    t.compare(await collection1.getDocChildrenRecursive(tr, 'B'), [
+      { docid: 'C', docname: 'c', children: [] },
+      { docid: 'D', docname: 'd', children: [] }
+    ])
+    await collection1.setDocParent(tr, 'A', 'B', 'a')
+    t.compare(await collection1.getDocChildrenRecursive(tr, 'B'), [
+      { docid: 'A', docname: 'a', children: [] },
+      { docid: 'C', docname: 'c', children: [] },
+      { docid: 'D', docname: 'd', children: [] }
+    ])
+    // @todo handle concurrent moves: parentless docs (deleted parent) should be moved to an
+    // orphanage. Circles should be detected - the most recent "parent" should be moved to the
+    // orhpanage.
+    // The orhpanage should just be a local container of references. docs don't need to be reparented.
+    // Circles are actually fine as long as the app can work with them.
+  })
 }
 
 /**
@@ -241,7 +243,7 @@ export const testFolderStructure = async tc => {
 export const testDeleteDoc = async tc => {
   const docid = 'test'
   const th = await helpers.createTestScenario(tc)
-  const [{ collection: collection1 }] = await th.createClients(1)
+  const [{ collection: collection1, ystream: ystream1 }] = await th.createClients(1)
   const ydoc = collection1.getYdoc(docid)
   await ydoc.whenLoaded
   ydoc.getText().insert(0, 'hi')
@@ -250,20 +252,24 @@ export const testDeleteDoc = async tc => {
   t.compareStrings(ydocCheck.getText().toString(), 'hi')
   console.log('docval prev', ydocCheck.getText().toString())
   ydocCheck.destroy()
-  await collection1.setLww(docid, 'val')
-  await collection1.setDocParent(docid, 'parentid', 'mydoc.md')
-  t.assert(await collection1.getLww(docid) === 'val')
-  t.assert(await collection1.getParent(docid) === 'parentid')
-  t.assert(await collection1.getDocName(docid) === 'mydoc.md')
-  await collection1.deleteDoc(docid)
+  await ystream1.transact(async tr => {
+    await collection1.setLww(tr, docid, 'val')
+    await collection1.setDocParent(tr, docid, 'parentid', 'mydoc.md')
+    t.assert(await collection1.getLww(tr, docid) === 'val')
+    t.assert(await collection1.getParent(tr, docid) === 'parentid')
+    t.assert(await collection1.getDocName(tr, docid) === 'mydoc.md')
+    await collection1.deleteDoc(tr, docid)
+  })
   const ydocCheck2 = collection1.getYdoc(docid)
   console.log('docval prev', ydocCheck2.getText().toString())
   t.compareStrings(ydocCheck2.getText().toString(), '')
-  t.assert(await collection1.getLww(docid) === undefined)
-  t.assert(await collection1.getParent(docid) === null)
-  t.assert(await collection1.getDocName(docid) === null)
-  await collection1.setLww(docid, 'val')
-  t.assert(await collection1.getLww(docid) === undefined)
-  // @todo test if deletion works in combination with parents (integration of delete should
-  // orphan child docs)
+  await ystream1.transact(async tr => {
+    t.assert(await collection1.getLww(tr, docid) === undefined)
+    t.assert(await collection1.getParent(tr, docid) === null)
+    t.assert(await collection1.getDocName(tr, docid) === null)
+    await collection1.setLww(tr, docid, 'val')
+    t.assert(await collection1.getLww(tr, docid) === undefined)
+    // @todo test if deletion works in combination with parents (integration of delete should
+    // orphan child docs)
+  })
 }

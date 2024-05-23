@@ -31,16 +31,16 @@ export const bindydoc = async (ystream, owner, collection, doc, ydoc) => {
         // @todo iterate through opened documents in ystream and apply update
         // Thought: iterating through the docs should be the default
       }
-      actions.addOp(ystream, ownerBin, collection, doc, new operations.OpYjsUpdate(update))
+      ystream.transact(tr => actions.addOp(tr, ystream, ownerBin, collection, doc, new operations.OpYjsUpdate(update)))
     }
   })
-  const updates = await ystream.childTransaction(async () => {
+  const updates = await ystream.transact(async tr => {
     const [
       updates,
       isDeleted
     ] = await promise.all([
-      actions.getDocOps(ystream, ownerBin, collection, doc, operations.OpYjsUpdateType, 0),
-      actions.isDocDeleted(ystream, ownerBin, collection, doc)
+      actions.getDocOps(tr, ystream, ownerBin, collection, doc, operations.OpYjsUpdateType, 0),
+      actions.isDocDeleted(tr, ystream, ownerBin, collection, doc)
     ])
     return isDeleted ? null : updates
   })

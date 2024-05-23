@@ -223,36 +223,7 @@ export class Ystream extends ObservableV2 {
    * @return {Promise<T>}
    */
   transact (f) {
-    return this._db.transact(async tr => {
-      this._tr = tr
-      let res
-      try {
-        res = await f(tr)
-        while (this._childTrs.length > 0) {
-          const p = promise.all(this._childTrs)
-          this._childTrs = []
-          await p
-        }
-      } finally {
-        this._tr = null
-        this._childTrs = []
-      }
-      return res
-    })
-  }
-
-  /**
-   * @template T
-   * @param {(tr:import('isodb').ITransaction<typeof import('./db.js').def>) => Promise<T>} f
-   * @return {Promise<T>}
-   */
-  childTransaction (f) {
-    if (this._tr) {
-      const p = f(this._tr)
-      this._childTrs.push(p)
-      return p
-    }
-    return this.transact(f)
+    return this._db.transact(f)
   }
 
   destroy () {
@@ -310,39 +281,43 @@ export class Collection extends ObservableV2 {
   }
 
   /**
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
    * @param {string} docid
    * @return {Promise<string?>}
    */
-  async getParent (docid) {
-    const co = await actions.getDocOpsMerged(this.ystream, this.ownerBin, this.collection, docid, operations.OpChildOfType)
+  async getParent (tr, docid) {
+    const co = await actions.getDocOpsMerged(tr, this.ystream, this.ownerBin, this.collection, docid, operations.OpChildOfType)
     return co?.op.parent || null
   }
 
   /**
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
    * @param {string} docid
    * @return {Promise<string?>}
    */
-  async getDocName (docid) {
-    const co = await actions.getDocOpsMerged(this.ystream, this.ownerBin, this.collection, docid, operations.OpChildOfType)
+  async getDocName (tr, docid) {
+    const co = await actions.getDocOpsMerged(tr, this.ystream, this.ownerBin, this.collection, docid, operations.OpChildOfType)
     return co?.op.childname || null
   }
 
   /**
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
    * @param {string} docid
    * @param {number} [endLocalClock]
    * @return {Promise<Array<{ docid: string, docname: string | null }>>}
    */
-  getDocPath (docid, endLocalClock) {
-    return actions.getDocPath(this.ystream, this.ownerBin, this.collection, docid, endLocalClock)
+  getDocPath (tr, docid, endLocalClock) {
+    return actions.getDocPath(tr, this.ystream, this.ownerBin, this.collection, docid, endLocalClock)
   }
 
   /**
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
    * @param {string} rootid
    * @param {Array<string>} path
    * @return {Promise<Array<string>>}
    */
-  getDocIdsFromPath (rootid, path) {
-    return actions.getDocIdsFromPath(this.ystream, this.ownerBin, this.collection, rootid, path)
+  getDocIdsFromPath (tr, rootid, path) {
+    return actions.getDocIdsFromPath(tr, this.ystream, this.ownerBin, this.collection, rootid, path)
   }
 
   /**
@@ -354,64 +329,71 @@ export class Collection extends ObservableV2 {
    *
    * This function does not overwrite content. The existing file should be deleted manually.
    *
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
    * @param {string} childid
    * @param {string|null} parentDoc
    * @param {string} childname
    */
-  async setDocParent (childid, parentDoc, childname) {
-    return actions.setDocParent(this.ystream, this.ownerBin, this.collection, childid, parentDoc, childname)
+  async setDocParent (tr, childid, parentDoc, childname) {
+    return actions.setDocParent(tr, this.ystream, this.ownerBin, this.collection, childid, parentDoc, childname)
   }
 
   /**
    * This function retrieves the children on a document. It simulates the behavior of the `ls` unix
    * command.
    *
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
    * @param {string} docname
    * @return {Promise<Array<{ docid: string, docname: string }>>}
    */
-  getDocChildren (docname) {
-    return actions.getDocChildren(this.ystream, this.ownerBin, this.collection, docname)
+  getDocChildren (tr, docname) {
+    return actions.getDocChildren(tr, this.ystream, this.ownerBin, this.collection, docname)
   }
 
   /**
    * This function retrieves the children on a document. It simulates the behavior of the `ls **\/*
    * -l` unix command.
    *
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
    * @param {string} docname
    */
-  getDocChildrenRecursive (docname) {
-    return actions.getDocChildrenRecursive(this.ystream, this.ownerBin, this.collection, docname)
+  getDocChildrenRecursive (tr, docname) {
+    return actions.getDocChildrenRecursive(tr, this.ystream, this.ownerBin, this.collection, docname)
   }
 
   /**
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
    * @param {string} key
    * @returns {any|undefined} undefined if the value was not defined previously
    */
-  getLww (key) {
-    return actions.getLww(this.ystream, this.ownerBin, this.collection, key)
+  getLww (tr, key) {
+    return actions.getLww(tr, this.ystream, this.ownerBin, this.collection, key)
   }
 
   /**
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
    * @param {string} key
    * @param {any} val
    * @return the previous values
    */
-  setLww (key, val) {
-    return actions.setLww(this.ystream, this.ownerBin, this.collection, key, val)
+  setLww (tr, key, val) {
+    return actions.setLww(tr, this.ystream, this.ownerBin, this.collection, key, val)
   }
 
   /**
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
    * @param {string} docid
    */
-  deleteDoc (docid) {
-    return actions.deleteDoc(this.ystream, this.ownerBin, this.collection, docid)
+  deleteDoc (tr, docid) {
+    return actions.deleteDoc(tr, this.ystream, this.ownerBin, this.collection, docid)
   }
 
   /**
+   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
    * @param {string} docid
    */
-  isDocDeleted (docid) {
-    return actions.isDocDeleted(this.ystream, this.ownerBin, this.collection, docid)
+  isDocDeleted (tr, docid) {
+    return actions.isDocDeleted(tr, this.ystream, this.ownerBin, this.collection, docid)
   }
 
   destroy () {

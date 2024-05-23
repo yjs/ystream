@@ -76,12 +76,12 @@ export class AbstractOp {
    * (e.g. AbstractOp.cleanup(merged, deletedOps), which is called only once before calling event
    * handlers or returning the promise)
    *
-   * @param {import('./ystream.js').Ystream} _ystream
    * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('./ystream.js').Ystream} _ystream
    * @param {import('./api/dbtypes.js').OpValue} _op
    * @return {Promise<void>|void}
    */
-  integrate (_ystream, _tr, _op) {
+  integrate (_tr, _ystream, _op) {
     error.methodUnimplemented()
   }
 
@@ -206,11 +206,11 @@ export class OpPerm {
   }
 
   /**
-   * @param {import('./ystream.js').Ystream} _ystream
    * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('./ystream.js').Ystream} _ystream
    * @param {import('./api/dbtypes.js').OpValue} _op
    */
-  integrate (_ystream, _tr, _op) {
+  integrate (_tr, _ystream, _op) {
   }
 
   /**
@@ -287,11 +287,11 @@ export class OpNoPermission {
   }
 
   /**
-   * @param {import('./ystream.js').Ystream} _ystream
    * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('./ystream.js').Ystream} _ystream
    * @param {import('./api/dbtypes.js').OpValue} _op
    */
-  integrate (_ystream, _tr, _op) {
+  integrate (_tr, _ystream, _op) {
   }
 
   /**
@@ -352,11 +352,11 @@ export class OpLww {
   }
 
   /**
-   * @param {import('./ystream.js').Ystream} _ystream
    * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('./ystream.js').Ystream} _ystream
    * @param {import('./api/dbtypes.js').OpValue} _op
    */
-  integrate (_ystream, _tr, _op) {
+  integrate (_tr, _ystream, _op) {
   }
 
   /**
@@ -432,16 +432,16 @@ export class OpChildOf {
   }
 
   /**
-   * @param {import('./ystream.js').Ystream} ystream
    * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
+   * @param {import('./ystream.js').Ystream} ystream
    * @param {import('./api/dbtypes.js').OpValue} op
    */
-  async integrate (ystream, tr, op) {
+  async integrate (tr, ystream, op) {
     if (this.parent !== null) {
       tr.tables.childDocs.set(new dbtypes.ParentKey(op.owner, op.collection, this.parent, this.childname ?? op.doc, op.localClock), op.doc)
     }
     // force that conflicts are unintegrated
-    await mergeDocOps(ystream, op.owner, op.collection, op.doc, this.type)
+    await mergeDocOps(tr, ystream, op.owner, op.collection, op.doc, this.type)
   }
 
   /**
@@ -514,11 +514,11 @@ export class OpYjsUpdate {
   }
 
   /**
-   * @param {import('./ystream.js').Ystream} _ystream
    * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('./ystream.js').Ystream} _ystream
    * @param {import('./api/dbtypes.js').OpValue} _op
    */
-  integrate (_ystream, _tr, _op) {
+  integrate (_tr, _ystream, _op) {
   }
 
   /**
@@ -568,11 +568,11 @@ export class OpDeleteDoc {
   }
 
   /**
-   * @param {import('./ystream.js').Ystream} _ystream
    * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('./ystream.js').Ystream} _ystream
    * @param {import('./api/dbtypes.js').OpValue} _op
    */
-  integrate (_ystream, _tr, _op) {
+  integrate (_tr, _ystream, _op) {
     /**
      * @todo get all doc operations here and unintegrate them
      */
