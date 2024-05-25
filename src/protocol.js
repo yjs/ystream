@@ -173,7 +173,8 @@ const readRequestOps = async (decoder, ystream, comm) => {
   }
   console.log(ystream.clientid, 'subscribing conn to ops', { fcid: comm.clientid, collection, owner })
   // @todo add method to filter by owner & collection
-  actions.createOpsReader(ystream, nextClock, owner, collection).pipeTo(comm.writer, { signal: comm.streamController.signal }).catch((reason) => {
+  actions.createOpsReader(ystream, nextClock, owner, collection, comm.clientid).pipeTo(comm.writer, { signal: comm.streamController.signal }).catch((reason) => {
+    comm.close(1007, 'unexpected error reading ops stream')
     console.log('ended pipe', { reason, isDestroyed: comm.isDestroyed })
   })
 }

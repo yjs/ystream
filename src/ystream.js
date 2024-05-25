@@ -126,11 +126,12 @@ export class Ystream extends ObservableV2 {
   /**
    * @param {string} dbname
    * @param {isodb.IDB<typeof db.def>} _db
+   * @param {number} clientid
    * @param {dbtypes.UserIdentity|null} user
    * @param {dbtypes.DeviceClaim|null} deviceClaim
    * @param {YstreamConf} conf
    */
-  constructor (dbname, _db, user, deviceClaim, { comms = [], acceptNewUsers = false, syncsEverything = false } = {}) {
+  constructor (dbname, _db, clientid, user, deviceClaim, { comms = [], acceptNewUsers = false, syncsEverything = false } = {}) {
     super()
     this.dbname = dbname
     /**
@@ -146,7 +147,7 @@ export class Ystream extends ObservableV2 {
      * Whether to sync all collections (usually only done by a server)
      */
     this.syncsEverything = syncsEverything
-    this.clientid = random.uint32()
+    this.clientid = clientid
     /**
      * @type {dbtypes.UserIdentity|null}
      */

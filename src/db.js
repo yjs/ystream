@@ -4,6 +4,7 @@ import * as webcrypto from 'lib0/webcrypto'
 import * as json from 'lib0/json'
 import * as promise from 'lib0/promise'
 import * as ecdsa from 'lib0/crypto/ecdsa'
+import * as random from 'lib0/random'
 
 /**
  * @todos
@@ -95,7 +96,8 @@ export const def = {
       public: isodb.CryptoKeyValue,
       private: isodb.CryptoKeyValue,
       identity: dbtypes.DeviceIdentity,
-      claim: dbtypes.DeviceClaim
+      claim: dbtypes.DeviceClaim,
+      clientid: isodb.AnyValue // @todo use isodb.Uint53 type
     }
   }
 }
@@ -194,15 +196,21 @@ export const createDb = dbname =>
        */
       let user = null
       /**
+       * @type {number}
+       */
+      let clientid
+      /**
        * @type {dbtypes.DeviceClaim|null}
        */
       let deviceClaim = null
       if (version == null) {
+        clientid = random.uint53()
         // init
         tr.objects.db.set('version', 0)
         const dguid = new Uint8Array(64)
         webcrypto.getRandomValues(dguid)
         await promise.all([
+          tr.objects.device.set('clientid', clientid),
           tr.objects.device.set('private', privateDeviceKey),
           tr.objects.device.set('public', publicDeviceKey),
           tr.objects.device.set('identity', new dbtypes.DeviceIdentity(publicDeviceKeyJwk))
@@ -213,6 +221,7 @@ export const createDb = dbname =>
         // @todo remove
         if (user == null) throw new Error('user should be defined')
       }
-      return { isAuthenticated, idb, user, deviceClaim }
+      clientid = /** @type {number} */ ((await tr.objects.device.get('clientid'))?.v)
+      return { isAuthenticated, idb, user, deviceClaim, clientid }
     })
   )

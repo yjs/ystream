@@ -200,7 +200,7 @@ const _eventsToCompute = []
  */
 const _computeEvents = async yfs => {
   const ycollection = yfs.ycollection
-  // console.log('all events to compute', _eventsToCompute)
+  console.log('all events to compute', _eventsToCompute)
   while (_eventsToCompute.length > 0) {
     await yfs.ystream.transact(async tr => {
       for (let iterations = 0; _eventsToCompute.length > 0 && iterations < 300; iterations++) {
@@ -242,6 +242,7 @@ const _computeEvents = async yfs => {
           }
           case 'addDir': {
             const { docid, isNew } = await mkPath(tr, ycollection.ystream, ycollection.ownerBin, ycollection.collection, 'root', arrPath)
+            console.log('addDir', { isNew })
             if (isNew) {
               await ycollection.setLww(tr, docid, {}) // regarding await: make sure that this document exists before continuing
             } else {
@@ -249,6 +250,7 @@ const _computeEvents = async yfs => {
               if (currContent?.constructor === Object) { // exists and is already a directory
                 // nop
               } else {
+                console.log('overwriting current content')
                 await ycollection.setLww(tr, docid, {})
               }
             }

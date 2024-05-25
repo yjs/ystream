@@ -28,9 +28,11 @@ const opsPerMessage = 300
  * @param {number} startClock
  * @param {Uint8Array?} owner
  * @param {string?} collection
+ * @param {number} remoteClientId
+ *
  * @return {ReadableStream<{ messages: Array<dbtypes.OpValue|Uint8Array>, origin: any }>}
  */
-export const createOpsReader = (ystream, startClock, owner, collection) => {
+export const createOpsReader = (ystream, startClock, owner, collection, remoteClientId) => {
   let nextClock = startClock
   /**
    * @type {((ops: Array<dbtypes.OpValue>, origin: any) => void) | null}
@@ -44,9 +46,9 @@ export const createOpsReader = (ystream, startClock, owner, collection) => {
     start (controller) {
       listener = (ops, origin) => {
         if (collection != null) {
-          ops = ops.filter(op => op.localClock >= nextClock && op.collection === collection && array.equalFlat(op.owner, /** @type {Uint8Array} */ (owner)))
+          ops = ops.filter(op => op.client !== remoteClientId && op.localClock >= nextClock && op.collection === collection && array.equalFlat(op.owner, /** @type {Uint8Array} */ (owner)))
         } else {
-          ops = ops.filter(op => op.localClock >= nextClock)
+          ops = ops.filter(op => op.client !== remoteClientId && op.localClock >= nextClock)
         }
         while (ops.length > 0) {
           const opsToSend = ops.splice(0, opsPerMessage)
@@ -68,7 +70,7 @@ export const createOpsReader = (ystream, startClock, owner, collection) => {
       console.log('desired size: ', controller.desiredSize, { nextClock })
       return ystream.transact(async tr => {
         do {
-          const ops = owner != null && collection != null
+          let ops = owner != null && collection != null
             ? await tr.tables.oplog.indexes.collection.getEntries({
               start: new dbtypes.CollectionKey(owner, collection, nextClock),
               end: new dbtypes.CollectionKey(owner, collection, number.HIGHEST_UINT32),
@@ -84,6 +86,7 @@ export const createOpsReader = (ystream, startClock, owner, collection) => {
               }
               return update.value
             }))
+          ops = ops.filter(op => op.client !== remoteClientId)
           if (ops.length === 0) {
             nextClock = math.max(ystream._eclock || 0, nextClock)
             console.log('sending synced step')
