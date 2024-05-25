@@ -21,7 +21,7 @@ import * as observable from 'lib0/observable'
  * Interface that describes a communication channel.
  *
  * @interface
- * @extends observable.ObservableV2<{ authenticated: (comm:Comm) => void }>
+ * @extends {observable.ObservableV2<{ authenticated: (comm:Comm) => void, "requested-ops": (comm: Comm, sub: { collection: { owner: Uint8Array?, name: string? }, clock: number }) => void }>}
  */
 export class Comm extends observable.ObservableV2 {
   get clientid () { return -1 }
@@ -73,10 +73,10 @@ export class Comm extends observable.ObservableV2 {
   }
 
   /**
-   * @param {number} [code]
-   * @param {string} [reason]
+   * @param {number} [_code]
+   * @param {string} [_reason]
    */
-  close (code, reason) {
+  close (_code, _reason) {
     error.methodUnimplemented()
   }
 }

@@ -10,7 +10,7 @@
     "url": "https://github.com/sponsors/dmonad"
   },
   "scripts": {
-    "demo": "npm run clean && rollup -c && concurrently '0serve -o ./demo/index.html' 'rollup -wc' 'npm run ws-server'",
+    "demo": "rollup -c && concurrently -r '0serve -o ./demo/index.html' 'rollup -wc' 'npm run ws-server'",
     "clean": "rm -rf dist .ystream .test_dbs tmp coverage",
     "types": "tsc",
     "gentesthtml": "npx 0gentesthtml --script ./tests/index.js > test.html",

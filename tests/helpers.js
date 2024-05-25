@@ -167,23 +167,10 @@ export const waitDocsSynced = (ydoc1, ydoc2) =>
  */
 export const waitCollectionsSynced = (ycollection1, ycollection2) =>
   promise.untilAsync(async () => {
-    const sv1 = await ycollection1.ystream.transact(tr => actions.getStateVector(tr, ycollection1.ystream, ycollection1.ownerBin, ycollection1.collection))
-    const sv2 = await ycollection2.ystream.transact(tr => actions.getStateVector(tr, ycollection2.ystream, ycollection2.ownerBin, ycollection2.collection))
-    /**
-     * @param {Ystream} ystream
-     * @return {(entries:any)=>any}
-     */
-    const updateClocks = (ystream) => colEntries => colEntries.map(update => {
-      update.value.localClock = update.key.v
-      if (update.value.client === ystream.clientid) {
-        update.value.clock = update.key.v
-      }
-      return update.value
-    })
-    const ops1 = await ycollection1.ystream.transact(tr => tr.tables.oplog.getEntries({ start: 0 })).then(updateClocks(ycollection1.ystream))
-    const ops2 = await ycollection2.ystream.transact(tr => tr.tables.oplog.getEntries({ start: 0 })).then(updateClocks(ycollection2.ystream))
-    const ops1sv = ops1.reduce((sv, op) => { sv[op.client] = op.clock; return sv }, /** @type {Object<number,number>} */ ({}))
-    const ops2sv = ops2.reduce((sv, op) => { sv[op.client] = op.clock; return sv }, /** @type {Object<number,number>} */ ({}))
-    console.log({ sv1, sv2, ops1: ops1.length, ops2: ops2.length, ops1sv, ops2sv, clientid1: ycollection1.ystream.clientid, clientid2: ycollection2.ystream.clientid })
+    let sv1 = await ycollection1.ystream.transact(tr => actions.getStateVector(tr, ycollection1.ystream, ycollection1.ownerBin, ycollection1.collection))
+    let sv2 = await ycollection2.ystream.transact(tr => actions.getStateVector(tr, ycollection2.ystream, ycollection2.ownerBin, ycollection2.collection))
+    sv1 = sv1.filter(s => s.client !== server?.ystream.clientid)
+    sv2 = sv2.filter(s => s.client !== server?.ystream.clientid)
+    console.log({ sv1, sv2, clientid1: ycollection1.ystream.clientid, clientid2: ycollection2.ystream.clientid, serverClientId: server?.ystream.clientid })
     return fun.equalityDeep(sv1, sv2)
   }, 0, 100)

@@ -141,9 +141,11 @@ class WebSocketCommInstance extends ObservableV2 {
     this.on('authenticated', async () => {
       const encoder = encoding.createEncoder()
       await ystream.transact(tr =>
-        actions.getClock(tr, ystream, this.clientid, handler.collection.owner, handler.collection.name).then(clock => {
-          this.nextClock = clock
-          return protocol.writeRequestOps(encoder, handler.collection.owner, handler.collection.name, clock)
+        actions.getClock(tr, ystream, this.clientid, handler.collection.owner, handler.collection.name).then(async clock => {
+          const sv = await actions.getStateVector(tr, ystream, handler.collection.owner, handler.collection.name)
+          log(this, 'requesting ops', { clock, clientid: this.clientid, sv })
+          this.nextClock = clock + 1
+          return protocol.writeRequestOps(encoder, handler.collection.owner, handler.collection.name, this.nextClock)
         })
       )
       this.send(encoding.toUint8Array(encoder))
@@ -166,6 +168,9 @@ class WebSocketCommInstance extends ObservableV2 {
   }
 
   /**
+   * Close the connection.
+   * Use a status code from websocket-utils.js
+   *
    * @param {number} [code]
    * @param {string} [reason]
    */
@@ -202,13 +207,13 @@ class WebSocketCommInstance extends ObservableV2 {
 class WebSocketHandlerInstance extends ObservableV2 {
   /**
    * @param {import('../ystream.js').Ystream} ystream
-   * @param {string} url
+   * @param {string} serverUrl
    * @param {{ owner: Uint8Array, name: string }} collection
    */
-  constructor (ystream, url, collection) {
+  constructor (ystream, serverUrl, collection) {
     super()
     this.ystream = ystream
-    this.url = url
+    this.serverUrl = serverUrl
     this.collection = collection
     this.shouldConnect = true
     this.wsUnsuccessfulReconnects = 0
@@ -220,6 +225,10 @@ class WebSocketHandlerInstance extends ObservableV2 {
     if (this.shouldConnect) {
       this._setupNewComm()
     }
+  }
+
+  get url () {
+    return `${this.serverUrl}/${buffer.toBase64UrlEncoded(this.collection.owner)}/${encodeURIComponent(this.collection.name)}`
   }
 
   _setupNewComm () {
@@ -259,11 +268,11 @@ class WebSocketHandlerInstance extends ObservableV2 {
  */
 export class WebSocketComm {
   /**
-   * @param {string} url
+   * @param {string} serverUrl
    * @param {{ owner: string, name: string }} collection
    */
-  constructor (url, collection) {
-    this.url = url
+  constructor (serverUrl, collection) {
+    this.serverUrl = serverUrl
     this.collection = collection
   }
 
@@ -271,6 +280,6 @@ export class WebSocketComm {
    * @param {Ystream} ystream
    */
   init (ystream) {
-    return new WebSocketHandlerInstance(ystream, this.url, { owner: buffer.fromBase64(this.collection.owner), name: this.collection.name })
+    return new WebSocketHandlerInstance(ystream, this.serverUrl, { owner: buffer.fromBase64(this.collection.owner), name: this.collection.name })
   }
 }

@@ -16,6 +16,7 @@ import { emitOpsEvent } from '../ystream.js'
 import * as authorization from '../api/authorization.js'
 import * as protocol from '../protocol.js'
 import * as isodb from 'isodb'
+import * as wsUtils from '../comms/websocket-utils.js'
 
 /**
  * @typedef {import('../ystream.js').Ystream} Ystream
@@ -28,11 +29,11 @@ const opsPerMessage = 300
  * @param {number} startClock
  * @param {Uint8Array?} owner
  * @param {string?} collection
- * @param {number} remoteClientId
+ * @param {import('../comm.js').Comm} comm
  *
  * @return {ReadableStream<{ messages: Array<dbtypes.OpValue|Uint8Array>, origin: any }>}
  */
-export const createOpsReader = (ystream, startClock, owner, collection, remoteClientId) => {
+export const createOpsReader = (ystream, startClock, owner, collection, comm) => {
   let nextClock = startClock
   /**
    * @type {((ops: Array<dbtypes.OpValue>, origin: any) => void) | null}
@@ -45,10 +46,11 @@ export const createOpsReader = (ystream, startClock, owner, collection, remoteCl
   const stream = new ReadableStream({
     start (controller) {
       listener = (ops, origin) => {
+        if (origin === comm && origin !== null) return
         if (collection != null) {
-          ops = ops.filter(op => op.client !== remoteClientId && op.localClock >= nextClock && op.collection === collection && array.equalFlat(op.owner, /** @type {Uint8Array} */ (owner)))
+          ops = ops.filter(op => op.client !== comm.clientid && op.localClock >= nextClock && op.collection === collection && array.equalFlat(op.owner, /** @type {Uint8Array} */ (owner)))
         } else {
-          ops = ops.filter(op => op.client !== remoteClientId && op.localClock >= nextClock)
+          ops = ops.filter(op => op.client !== comm.clientid && op.localClock >= nextClock)
         }
         while (ops.length > 0) {
           const opsToSend = ops.splice(0, opsPerMessage)
@@ -86,7 +88,7 @@ export const createOpsReader = (ystream, startClock, owner, collection, remoteCl
               }
               return update.value
             }))
-          ops = ops.filter(op => op.client !== remoteClientId)
+          ops = ops.filter(op => op.client !== comm.clientid)
           if (ops.length === 0) {
             nextClock = math.max(ystream._eclock || 0, nextClock)
             console.log('sending synced step')
@@ -465,7 +467,6 @@ export const getNoPerms = async (tr, ystream, owner, collection) =>
 export const getClock = async (tr, ystream, clientid, owner, collection) => {
   if (ystream.clientid === clientid) {
     const latestEntry = await tr.tables.oplog.getKeys({
-      end: number.HIGHEST_UINT32, // @todo change to uint
       reverse: true,
       limit: 1
     })
@@ -478,7 +479,7 @@ export const getClock = async (tr, ystream, clientid, owner, collection) => {
   owner != null && queries.push(clocksTable.get(new dbtypes.ClocksKey(clientid, owner, null)))
   owner != null && collection != null && queries.push(clocksTable.get(new dbtypes.ClocksKey(clientid, owner, collection)))
   const clocks = await promise.all(queries)
-  return array.fold(clocks.map(c => c ? c.clock : 0), 0, math.max)
+  return array.fold(clocks.map(c => c ? c.clock : -1), -1, math.max)
 }
 
 /**
@@ -581,7 +582,7 @@ export const applyRemoteOps = async (ystream, comm, ops, user, origin, startCloc
   await ystream.transact(async tr => {
     if (comm.nextClock < startClock) {
       console.error('some operations seem to be missing. Reconnecting!', { commNextClock: comm.nextClock, startClock, endClock })
-      comm.close(1002, 'some operations seem to be missing')
+      comm.close(wsUtils.statusConsistencyError, 'some operations seem to be missing')
       // process.exit(1) // @todo remove - this just exists to catch bugs
       throw new Error('some operations seem to be missing') // instead of return, to cancel everything
     }
@@ -645,6 +646,13 @@ export const applyRemoteOps = async (ystream, comm, ops, user, origin, startCloc
         console.log('Not applying op because of missing permission', op, ystream.syncsEverything, user.hash, user.isTrusted)
       }
     }
+    if (ops.length > 0) {
+      // we know that we received all ops from the remote user up until endClock
+      const lastOp = ops[ops.length - 1]
+      // @todo this is only meant for single-collection syncs. When syncing all collections, we need a
+      // better mechanism.
+      clientClockEntries.set(encodeClocksKey(comm.clientid, lastOp.owner, lastOp.collection), new dbtypes.ClientClockValue(endClock, lastOp.localClock))
+    }
     clientClockEntries.forEach((clockValue, encClocksKey) => {
       const clocksKey = dbtypes.ClocksKey.decode(decoding.createDecoder(buffer.fromBase64(encClocksKey)))
       tr.tables.clocks.set(clocksKey, clockValue)
@@ -673,7 +681,8 @@ export const applyRemoteOps = async (ystream, comm, ops, user, origin, startCloc
           if (docupdates.length > 0 && ((docset && docset.size > 0) || env.isBrowser)) {
             const mergedUpdate = Y.mergeUpdatesV2(docupdates.map(op => op.op.update))
             if (docset && docset.size > 0) {
-              docset.forEach(doc => Y.applyUpdateV2(doc, mergedUpdate))
+              // @todo listen to the 'ops' event instead (but more efficiently)
+              docset.forEach(doc => Y.applyUpdateV2(doc, mergedUpdate, ystream))
             }
             /* c8 ignore start */
             if (env.isBrowser) {

@@ -31,6 +31,10 @@ import * as utils from '../utils.js'
 import * as logging from 'lib0/logging'
 import * as observable from 'lib0/observable'
 import * as actions from '../api/actions.js'
+import * as buffer from 'lib0/buffer'
+import * as array from 'lib0/array'
+import * as wsUtils from './websocket-utils.js'
+import * as url from 'lib0/url'
 
 const expectedBufferedAmount = 512 * 1024 // 512kb
 
@@ -45,17 +49,21 @@ const log = (comm, type, ...args) => _log(logging.PURPLE, `(local=${comm.ystream
 const maxBufferedAmount = 3000_000
 
 /**
- * @implements comm.Comm
- * @extends {observable.ObservableV2<{ authenticated: (comm: WSClient) => void }>}
+ * @implements {comm.Comm}
+ * @extends {observable.ObservableV2<{ authenticated: (comm:comm.Comm) => void, "requested-ops": (comm: comm.Comm, sub: { collection: { owner: Uint8Array?, name: string? }, clock: number }) => void }>}
  */
 class WSClient extends observable.ObservableV2 {
   /**
    * @param {uws.WebSocket<{ client: WSClient }>} ws
    * @param {Ystream.Ystream} ystream
+   * @param {object} collection
+   * @param {Uint8Array} collection.owner
+   * @param {string} collection.name
    */
-  constructor (ws, ystream) {
+  constructor (ws, ystream, collection) {
     super()
     this.ystream = ystream
+    this.collection = collection
     this.clientid = -1
     /**
      * @type {import('../api/dbtypes.js').UserIdentity|null}
@@ -84,7 +92,7 @@ class WSClient extends observable.ObservableV2 {
      */
     this.writer = new WritableStream({
       write: ({ messages, origin }) => {
-        log(this, 'sending ops', () => { return `number of ops=${messages.length}` })
+        log(this, 'sending messages', () => { return `number of messages=${messages.length}` })
         for (let i = 0; i < messages.length; i++) {
           this.send(messages[i])
         }
@@ -95,11 +103,16 @@ class WSClient extends observable.ObservableV2 {
       }
     })
     this.on('authenticated', async () => {
-      const encoder = encoding.createEncoder()
-      const clock = await ystream.transact(tr => actions.getClock(tr, ystream, this.clientid, null, null))
-      this.nextClock = clock
-      protocol.writeRequestAllOps(encoder, clock)
-      this.send(encoding.toUint8Array(encoder))
+      const clock = await ystream.transact(tr => actions.getClock(tr, ystream, this.clientid, this.collection.owner, this.collection.name))
+      this.nextClock = clock + 1
+      this.send(encoding.encode(encoder => {
+        protocol.writeRequestOps(encoder, this.collection.owner, this.collection.name, this.nextClock)
+      }))
+    })
+    this.on('requested-ops', (_comm, { collection }) => {
+      if (collection.name !== this.collection.name || collection.owner == null || !array.equalFlat(collection.owner, this.collection.owner)) {
+        this.close(wsUtils.statusUnauthenticated, 'cannot request ops from other collections')
+      }
     })
   }
 
@@ -144,6 +157,9 @@ class WSClient extends observable.ObservableV2 {
   }
 
   /**
+   * Close the connection.
+   * Use a status code from websocket-utils.js
+   *
    * @param {number} [code]
    * @param {string} [reason]
    */
@@ -200,18 +216,31 @@ export class WSServer {
     this.ystream = ystream
     this.ready = ystream.whenAuthenticated.then(() => promise.create((resolve, reject) => {
       console.log('starting websocket server')
-      uws.App({}).ws('/*', /** @type {uws.WebSocketBehavior<{ client: WSClient }>} */ ({
+      uws.App({}).ws('/:owner/:cname', /** @type {uws.WebSocketBehavior<{ client: WSClient, collection: { owner: Uint8Array, name: string } }>} */ ({
         /* Options */
         compression: uws.SHARED_COMPRESSOR,
         maxPayloadLength: 70 * 1024 * 1024 * 1024,
         // @todo use the "dropped" timeout to create a new reader that reads directly form the
         // database without consuming much memory.
         maxBackpressure: 70 * 1024 * 1024 * 1024 * 100,
+        // closeOnBackpressureLimit: true, // @todo reenable once types are fixed
         idleTimeout: 960,
+        upgrade: (res, req, context) => {
+          const owner = buffer.fromBase64UrlEncoded(req.getParameter(0))
+          const name = decodeURIComponent(req.getParameter(1))
+          res.upgrade(
+            { client: null, collection: { owner, name } },
+            req.getHeader('sec-websocket-key'),
+            req.getHeader('sec-websocket-protocol'),
+            req.getHeader('sec-websocket-extensions'),
+            context
+          )
+        },
         /* Handlers */
         open: (ws) => {
-          const client = new WSClient(ws, ystream)
-          ws.getUserData().client = client
+          const userData = ws.getUserData()
+          const client = new WSClient(ws, ystream, userData.collection)
+          userData.client = client
           client.send(encoding.encode(encoder => {
             protocol.writeInfo(encoder, ystream, client)
           }))

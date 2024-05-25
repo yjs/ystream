@@ -204,7 +204,8 @@ export const createDb = dbname =>
        */
       let deviceClaim = null
       if (version == null) {
-        clientid = random.uint53()
+        // @todo derive clientid from deviceid
+        clientid = random.uint32()
         // init
         tr.objects.db.set('version', 0)
         const dguid = new Uint8Array(64)

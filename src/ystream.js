@@ -5,7 +5,6 @@ import * as promise from 'lib0/promise'
 import * as isodb from 'isodb' // eslint-disable-line
 import * as db from './db.js' // eslint-disable-line
 import { ObservableV2 } from 'lib0/observable'
-import * as random from 'lib0/random'
 import * as actions from './api/actions.js'
 import * as dbtypes from './api/dbtypes.js' // eslint-disable-line
 import * as bc from 'lib0/broadcastchannel'
@@ -85,6 +84,7 @@ const _emitOpsEvent = (ystream, ops, origin) => {
     return
   }
   ystream._nextEmitOps = _joinOpArrays(ystream._nextEmitOps, ops, ystream._eclock ?? -1)
+  ystream._nextEmitOpsOrigins.push(origin)
   if (
     ystream._emitTimeout === null && ystream._nextEmitOps.length > 0
     // && (ystream._eclock == null || ystream._nextEmitOps[0].localClock === ystream._eclock)
@@ -101,7 +101,10 @@ const _emitOpsEvent = (ystream, ops, origin) => {
       const emitNow = nextEmitOps.splice(0, emitNowRange)
       ystream._eclock = eclock
       if (emitNow.length > 0) {
-        ystream.emit('ops', [emitNow, origin, true])
+        ystream.emit('ops', [emitNow, ystream._nextEmitOpsOrigins.length === 1 ? ystream._nextEmitOpsOrigins[0] : null, true])
+      }
+      if (nextEmitOps.length === 0) {
+        ystream._nextEmitOpsOrigins.length = 0
       }
     })
   }
@@ -171,6 +174,11 @@ export class Ystream extends ObservableV2 {
      * @type {Array<dbtypes.OpValue>}
      */
     this._nextEmitOps = []
+    /**
+     * Ops that will be emitted next.
+     * @type {Array<dbtypes.OpValue>}
+     */
+    this._nextEmitOpsOrigins = []
     /**
      * @type {eventloop.TimeoutObject?}
      */

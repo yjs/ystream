@@ -11,6 +11,7 @@ import * as buffer from 'lib0/buffer'
 import * as jose from 'lib0/crypto/jwt'
 import * as sha256 from 'lib0/hash/sha256'
 import * as string from 'lib0/string'
+import * as wsUtils from './comms/websocket-utils.js'
 
 const _log = logging.createModuleLogger('@y/stream/protocol')
 /**
@@ -163,18 +164,19 @@ const readRequestOps = async (decoder, ystream, comm) => {
   let nextClock = 0
   if (requestedAllOps) {
     nextClock = decoding.readVarUint(decoder)
-    log(ystream, comm, 'RequestOps', 'requested all ops')
+    log(ystream, comm, 'RequestOps', 'requested all ops', () => ({ nextClock, remoteClientId: comm.clientid }))
   } else {
     // requested only a single collection
     owner = decoding.readVarUint8Array(decoder)
     collection = decoding.readVarString(decoder)
     nextClock = decoding.readVarUint(decoder)
-    log(ystream, comm, 'RequestOps', `requested "${collection}"`)
+    log(ystream, comm, 'RequestOps', `requested "${collection}" `, () => ({ nextClock, remoteClientId: comm.clientid }))
   }
+  comm.emit('requested-ops', [comm, { collection: { owner, name: collection }, clock: nextClock }])
   console.log(ystream.clientid, 'subscribing conn to ops', { fcid: comm.clientid, collection, owner })
   // @todo add method to filter by owner & collection
-  actions.createOpsReader(ystream, nextClock, owner, collection, comm.clientid).pipeTo(comm.writer, { signal: comm.streamController.signal }).catch((reason) => {
-    comm.close(1007, 'unexpected error reading ops stream')
+  actions.createOpsReader(ystream, nextClock, owner, collection, comm).pipeTo(comm.writer, { signal: comm.streamController.signal }).catch((reason) => {
+    comm.close(wsUtils.statusParseError, 'unexpected error reading ops stream')
     console.log('ended pipe', { reason, isDestroyed: comm.isDestroyed })
   })
 }
@@ -225,13 +227,13 @@ const readInfo = async (encoder, decoder, ystream, comm) => {
       await authentication.registerUser(ystream, user)
     } else {
       log(ystream, comm, 'destroying', 'User not registered')
-      comm.close(1002, 'User not registered')
+      comm.close(wsUtils.statusUnauthenticated, 'User not registered')
       return
     }
   }
   const parsedClaim = await deviceClaim.verify(await user.publicKey)
   if (parsedClaim.payload.iss !== user.ekey) {
-    comm.close(1002, 'invalid user claim')
+    comm.close(wsUtils.statusUnauthenticated, 'invalid user claim')
     error.unexpectedCase()
   }
   await ystream.transact(async tr => {
@@ -302,7 +304,7 @@ export const readMessage = async (encoder, decoder, ystream, comm) => {
       } else {
         if (comm.deviceClaim == null || comm.user == null || !comm.isAuthenticated) {
           log(ystream, comm, 'closing unauthenticated connection')
-          comm.close(1002, 'closing unauthenticated connection')
+          comm.close(wsUtils.statusUnauthenticated, 'closing unauthenticated connection')
         }
         switch (messageType) {
           case messageOps: {
@@ -333,8 +335,7 @@ export const readMessage = async (encoder, decoder, ystream, comm) => {
     }
     return null
   } catch (err) {
-    debugger
     log(ystream, comm, 'Info rejection', 'Closing connection because of unexpected error', /** @type {Error} */ (err).stack)
-    comm.close(1007, 'Unexpected error when parsing message')
+    comm.close(wsUtils.statusParseError, 'Unexpected error when parsing message')
   }
 }
