@@ -84,8 +84,7 @@ class WebSocketCommInstance extends ObservableV2 {
     this._readMessageQueue = queue.create()
     this.streamController = new AbortController()
     this.wsconnected = false
-    this.nextClock = 0
-    const randomIdentifier = Math.random() // @todo remove
+    this.nextClock = -1
     /**
      * @type {WritableStream<{ messages: Array<Uint8Array>, origin: any }>}
      */
@@ -94,22 +93,13 @@ class WebSocketCommInstance extends ObservableV2 {
         if (!this.wsconnected) {
           return this.destroy()
         }
-        log(this, 'sending ops', () => `buffered amount=${this.ws?.bufferedAmount}, `, () => { return `number of ops=${messages.length}, first=` }, () => {
-          const m = messages[0]
-          if (m instanceof dbtypes.OpValue) {
-            const { clock, localClock, client } = m
-            return { clock, localClock, client, randomIdentifier }
-          } else {
-            return 'control message'
-          }
-        })
+        log(this, 'sending ops', () => `buffered amount=${this.ws?.bufferedAmount}, `, () => { return `number of ops=${messages.length}` })
         for (let i = 0; i < messages.length; i++) {
           this.send(messages[i])
         }
         const maxBufferedAmount = 3000_000
         if ((this.ws?.bufferedAmount || 0) > maxBufferedAmount) {
-          // @todo make timeout (30000ms) configurable
-          return promise.until(30000, () => (this.ws?.bufferedAmount || 0) < maxBufferedAmount)
+          return promise.until(0, () => (this.ws?.bufferedAmount || 0) < maxBufferedAmount)
         }
       }
     })

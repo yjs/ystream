@@ -78,7 +78,7 @@ class WSClient extends observable.ObservableV2 {
     this.sentChallengeAnswer = false
     this.challenge = webcrypto.getRandomValues(new Uint8Array(64))
     this.streamController = new AbortController()
-    this.nextClock = 0
+    this.nextClock = -1
     /**
      * @type {WritableStream<{ messages: Array<Uint8Array>, origin: any }>}
      */
@@ -97,6 +97,7 @@ class WSClient extends observable.ObservableV2 {
     this.on('authenticated', async () => {
       const encoder = encoding.createEncoder()
       const clock = await ystream.transact(tr => actions.getClock(tr, ystream, this.clientid, null, null))
+      this.nextClock = clock
       protocol.writeRequestAllOps(encoder, clock)
       this.send(encoding.toUint8Array(encoder))
     })
@@ -147,8 +148,10 @@ class WSClient extends observable.ObservableV2 {
    * @param {string} [reason]
    */
   close (code, reason) {
+    if (this.isDestroyed) return
     console.log('closing conn')
-    this.ws.end(code, reason)
+    if (code != null && reason != null) this.ws.end(code, reason)
+    else this.ws.end()
     this.destroy()
   }
 
@@ -200,8 +203,11 @@ export class WSServer {
       uws.App({}).ws('/*', /** @type {uws.WebSocketBehavior<{ client: WSClient }>} */ ({
         /* Options */
         compression: uws.SHARED_COMPRESSOR,
-        maxPayloadLength: 70 * 1024 * 1024,
-        idleTimeout: 60,
+        maxPayloadLength: 70 * 1024 * 1024 * 1024,
+        // @todo use the "dropped" timeout to create a new reader that reads directly form the
+        // database without consuming much memory.
+        maxBackpressure: 70 * 1024 * 1024 * 1024 * 100,
+        idleTimeout: 960,
         /* Handlers */
         open: (ws) => {
           const client = new WSClient(ws, ystream)

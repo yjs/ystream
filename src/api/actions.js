@@ -21,6 +21,8 @@ import * as isodb from 'isodb'
  * @typedef {import('../ystream.js').Ystream} Ystream
  */
 
+const opsPerMessage = 300
+
 /**
  * @param {Ystream} ystream
  * @param {number} startClock
@@ -36,7 +38,7 @@ export const createOpsReader = (ystream, startClock, owner, collection) => {
   let listener = null
   let registeredListener = false
   /**
-   * @type {ReadableStream<{ messages: Array<dbtypes.OpValue|Uint8Array>, origin: any }>}
+   * @type {ReadableStream<{ messages: Array<Uint8Array>, origin: any }>}
    */
   const stream = new ReadableStream({
     start (controller) {
@@ -46,12 +48,13 @@ export const createOpsReader = (ystream, startClock, owner, collection) => {
         } else {
           ops = ops.filter(op => op.localClock >= nextClock)
         }
-        if (ops.length > 0) {
-          const endClock = ops[ops.length - 1].localClock
+        while (ops.length > 0) {
+          const opsToSend = ops.splice(0, opsPerMessage)
+          const endClock = opsToSend[opsToSend.length - 1].localClock
           controller.enqueue({
             messages: [
               encoding.encode(encoder => {
-                protocol.writeOps(encoder, ops, nextClock, endClock)
+                protocol.writeOps(encoder, opsToSend, nextClock, endClock)
               })
             ],
             origin
@@ -69,11 +72,11 @@ export const createOpsReader = (ystream, startClock, owner, collection) => {
             ? await tr.tables.oplog.indexes.collection.getEntries({
               start: new dbtypes.CollectionKey(owner, collection, nextClock),
               end: new dbtypes.CollectionKey(owner, collection, number.HIGHEST_UINT32),
-              limit: 3000
+              limit: opsPerMessage
             }).then(colEntries => _updateOpClocksHelper(ystream, colEntries))
             : await tr.tables.oplog.getEntries({
               start: new isodb.AutoKey(nextClock),
-              limit: 3000
+              limit: opsPerMessage
             }).then(colEntries => colEntries.map(update => {
               update.value.localClock = update.key.v
               if (update.value.client === ystream.clientid) {
@@ -104,6 +107,7 @@ export const createOpsReader = (ystream, startClock, owner, collection) => {
             const endClock = ops[ops.length - 1].localClock
             const messages = [
               encoding.encode(encoder => {
+                // @todo, here, you can filter ops by remote client
                 protocol.writeOps(encoder, ops, nextClock, endClock)
               })
             ]
@@ -117,9 +121,9 @@ export const createOpsReader = (ystream, startClock, owner, collection) => {
       ystream.off('ops', /** @type {(ops: Array<dbtypes.OpValue>) => void} */ (listener))
     }
   }, {
-    highWaterMark: 1,
+    highWaterMark: 500000,
     size (message) {
-      return message.messages.length
+      return message.messages.reduce((len, m) => len + m.byteLength, 0)
     }
   })
   return stream
@@ -151,11 +155,17 @@ export const getUnsyncedDocs = async (tr, ystream, owner, collection) => {
  * @return {Array<UPDATE["value"]>}
  */
 const _updateOpClocksHelper = (ystream, updates) => updates.map(update => {
-  update.value.localClock = update.fkey.v
-  if (update.value.client === ystream.clientid) {
-    update.value.clock = update.fkey.v
+  // @todo remove this
+  try {
+    update.value.localClock = update.fkey.v
+    if (update.value.client === ystream.clientid) {
+      update.value.clock = update.fkey.v
+    }
+    return update.value
+  } catch (e) {
+    console.log({ update, v: update.value, fkey: update.fkey })
+    throw e
   }
-  return update.value
 })
 
 /**
@@ -558,11 +568,19 @@ export const applyRemoteOps = async (ystream, comm, ops, user, origin, startCloc
    * @type {Array<dbtypes.OpValue<any>>}
    */
   const filteredOpsPermsChecked = []
+  if (comm.nextClock < 0) {
+    try {
+      // wait up to three seconds for nextClock to be set. if it's not set, we shouldn't accept ops.
+      // @todo this shouldn't happen. Figure out how to reliably reproduce this.
+      await promise.until(3000, () => comm.nextClock >= 0)
+    } catch (e) {}
+  }
   await ystream.transact(async tr => {
     if (comm.nextClock < startClock) {
       console.error('some operations seem to be missing. Reconnecting!', { commNextClock: comm.nextClock, startClock, endClock })
       comm.close(1002, 'some operations seem to be missing')
-      return
+      // process.exit(1) // @todo remove - this just exists to catch bugs
+      throw new Error('some operations seem to be missing') // instead of return, to cancel everything
     }
     /**
      * Maps from encoded(collection/doc/clientid) to clock
