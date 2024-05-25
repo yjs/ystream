@@ -29,16 +29,24 @@ export default class Yfs extends observable.ObservableV2 {
      */
     this._filesToRender = []
     /**
+     * @type {Set<string>}
+     */
+    this._filesToRenderDocNames = new Set()
+    /**
      * @type {(ops: Array<any>, origin: any) => void}
      */
     this._opsObserver = (ops, _origin) => {
-      console.log({ ops })
+      const shouldStartRender = this._filesToRender.length === 0
+      // console.log({ ops })
       for (let i = 0; i < ops.length; i++) {
         const op = ops[i]
-        console.log('doc added to files to render', { docid: op.doc, type: op.op.type, op: op.op, opC: op.op.val?.toString?.().slice(0, 50) })
-        this._filesToRender.push({ clock: op.localClock, docid: op.doc })
+        if (!this._filesToRenderDocNames.has(op.doc)) {
+          // console.log('doc added to files to render', { docid: op.doc, type: op.op.type, op: op.op, opC: op.op.val?.toString?.().slice(0, 50) })
+          this._filesToRender.push({ clock: op.localClock, docid: op.doc })
+          this._filesToRenderDocNames.add(op.doc)
+        }
       }
-      if (this._filesToRender.length === ops.length) {
+      if (shouldStartRender) {
         _renderFiles(this)
       }
     }
@@ -100,14 +108,13 @@ const _renderFiles = async (yfs) => {
         actions.getDocPath(tr, yfs.ystream, yfs.ycollection.ownerBin, yfs.ycollection.collection, docid, ycontent == null ? opClock - 1 : opClock)
         const docPath = await actions.getDocPath(tr, yfs.ystream, yfs.ycollection.ownerBin, yfs.ycollection.collection, docid, ycontent == null ? opClock - 1 : opClock)
         const docnamee = docPath[docPath.length - 1].docname
-        const docdeleted = await actions.isDocDeleted(tr, yfs.ystream, yfs.ycollection.ownerBin, yfs.ycollection.collection, docid)
-        console.log({ docnamee, docdeleted, docid, ycontent: /** @type {any} */ (ycontent)?.content?.toString?.().slice(0, 50) || ycontent, docPath, opClock })
+        // const docdeleted = await actions.isDocDeleted(tr, yfs.ystream, yfs.ycollection.ownerBin, yfs.ycollection.collection, docid)
+        // console.log({ docnamee, docdeleted, docid, ycontent: /** @type {any} */ (ycontent)?.content?.toString?.().slice(0, 50) || ycontent, docPath, opClock })
         docPath.shift()
         const strPath = path.join(yfs.observedPath, docPath.map(p => p.docname).join('/'))
         if (docnamee == null) {
-          console.log('docname should not be empty') // @todo
-          filesToRender.shift()
-          return
+          console.warn('docname should not be empty') // @todo
+          // @todo this edge case is ignored for now
           // error.unexpectedCase()
         } else if (ycontent == null) {
           console.log('removing file/dir ', { strPath })
@@ -128,23 +135,24 @@ const _renderFiles = async (yfs) => {
             console.log('error in fs.stat', e)
           }
         } else if (ycontent.type === 'binaryFile') {
-          console.log('trying to read file', { strPath, docPath })
+          // console.log('trying to read file', { strPath, docPath })
           const fileContent = fs.existsSync(strPath) ? fs.readFileSync(strPath) : null
           if (fileContent == null || !array.equalFlat(fileContent, ycontent.content)) {
-            console.log('writing file', { docPath, strPath, ycontent: /** @type {any} */ (ycontent).content?.toString?.().slice(0, 50) || ycontent, fileContent: fileContent?.toString?.().slice(0, 50), ypath: docPath })
+            // console.log('writing file', { docPath, strPath, ycontent: /** @type {any} */ (ycontent).content?.toString?.().slice(0, 50) || ycontent, fileContent: fileContent?.toString?.().slice(0, 50), ypath: docPath })
             fs.writeFileSync(strPath, ycontent.content)
-            console.log('file written!', { strPath })
+            // console.log('file written!', { strPath })
           }
         } else {
-          console.log('checking if folder exists', { strPath })
+          // console.log('checking if folder exists', { strPath })
           if (!fs.existsSync(strPath)) {
-            console.log(strPath, ' does notexist , lets creat it..')
+            // console.log(strPath, ' does notexist , lets creat it..')
             fs.mkdirSync(strPath)
-            console.log('folder exists now', {
-              strPath, exists: fs.existsSync(strPath)
-            })
+            // console.log('folder exists now', {
+            //   strPath, exists: fs.existsSync(strPath)
+            // })
           }
         }
+        yfs._filesToRenderDocNames.delete(docid)
         filesToRender.shift()
       }
     })
@@ -192,31 +200,31 @@ const _eventsToCompute = []
  */
 const _computeEvents = async yfs => {
   const ycollection = yfs.ycollection
-  console.log('all events to compute', _eventsToCompute)
+  // console.log('all events to compute', _eventsToCompute)
   while (_eventsToCompute.length > 0) {
     await yfs.ystream.transact(async tr => {
       for (let iterations = 0; _eventsToCompute.length > 0 && iterations < 300; iterations++) {
         const event = _eventsToCompute[0]
         const arrPath = event.path.split(path.sep)
-        const filePath = arrPath.slice(0, -1)
-        const fileName = arrPath[arrPath.length - 1]
-        console.log(event.type, { path: event.path, filePath, fileName, content: event.content?.toString?.().slice(0, 50) || event.content })
+        // const filePath = arrPath.slice(0, -1)
+        // const fileName = arrPath[arrPath.length - 1]
+        // console.log(event.type, { path: event.path, filePath, fileName, content: event.content?.toString?.().slice(0, 50) || event.content })
         switch (event.type) {
           case 'add':
           case 'change': {
-            console.log('ids for path', {
-              filePath,
-              ids: await ycollection.getDocIdsFromPath(tr, 'root', filePath)
-            })
+            // console.log('ids for path', {
+            //   filePath,
+            //   ids: await ycollection.getDocIdsFromPath(tr, 'root', filePath)
+            // })
             const { docid, isNew } = await mkPath(tr, ycollection.ystream, ycollection.ownerBin, ycollection.collection, 'root', arrPath)
             if (isNew) {
-              console.log('created file', { filePath, eventContent: event.content?.toString().slice(0, 50) })
+              // console.log('created file', { filePath, eventContent: event.content?.toString().slice(0, 50) })
               await ycollection.setLww(tr, docid, event.content)
             } else {
               const currContent = await ycollection.getLww(tr, docid)
-              console.log('updating file', { filePath, currContent: Buffer.from(currContent).toString().slice(0, 50), eventContent: event.content?.toString().slice(0, 50) })
+              // console.log('updating file', { filePath, currContent: Buffer.from(currContent).toString().slice(0, 50), eventContent: event.content?.toString().slice(0, 50) })
               if (Buffer.isBuffer(event.content) && currContent instanceof Uint8Array && array.equalFlat(currContent, event.content)) {
-                console.log('nop...')
+                // console.log('nop...')
                 // nop
               } else {
                 await ycollection.setLww(tr, docid, event.content)
@@ -238,7 +246,7 @@ const _computeEvents = async yfs => {
               await ycollection.setLww(tr, docid, {}) // regarding await: make sure that this document exists before continuing
             } else {
               const currContent = await ycollection.getLww(tr, docid)
-              if (currContent.constructor === Object) { // exists and is already a directory
+              if (currContent?.constructor === Object) { // exists and is already a directory
                 // nop
               } else {
                 await ycollection.setLww(tr, docid, {})

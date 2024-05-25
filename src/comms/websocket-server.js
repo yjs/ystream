@@ -42,6 +42,8 @@ const _log = logging.createModuleLogger('@y/stream/websocket')
  */
 const log = (comm, type, ...args) => _log(logging.PURPLE, `(local=${comm.ystream.clientid.toString(36).slice(0, 4)},remote=${comm.clientid.toString(36).slice(0, 4)}) `, logging.ORANGE, '[' + type + '] ', logging.GREY, ...args.map(arg => typeof arg === 'function' ? arg() : arg))
 
+const maxBufferedAmount = 3000_000
+
 /**
  * @implements comm.Comm
  * @extends {observable.ObservableV2<{ authenticated: (comm: WSClient) => void }>}
@@ -68,6 +70,7 @@ class WSClient extends observable.ObservableV2 {
      * @type {Array<function (encoding.Encoder): Promise<boolean>>}
      */
     this.nextOps = []
+    this._isClosed = false
     this._isDraining = false
     this.isDestroyed = false
     this.synced = new utils.CollectionsSet()
@@ -75,36 +78,16 @@ class WSClient extends observable.ObservableV2 {
     this.sentChallengeAnswer = false
     this.challenge = webcrypto.getRandomValues(new Uint8Array(64))
     this.streamController = new AbortController()
+    this.nextClock = 0
     /**
-     * @type {WritableStream<{ messages: Array<dbtypes.OpValue|Uint8Array>, origin: any }>}
+     * @type {WritableStream<{ messages: Array<Uint8Array>, origin: any }>}
      */
     this.writer = new WritableStream({
       write: ({ messages, origin }) => {
-        if (origin === this) return
-        log(this, 'sending ops', () => { return `number of ops=${messages.length}, first=` }, () => {
-          const m = messages[0]
-          if (m instanceof dbtypes.OpValue) {
-            const { clock, localClock, client } = m
-            return { clock, localClock, client }
-          } else {
-            return 'control message'
-          }
-        })
-        const encodedMessage = encoding.encode(encoder => {
-          for (let i = 0; i < messages.length; i++) {
-            const m = messages[i]
-            if (m instanceof Uint8Array) {
-              encoding.writeUint8Array(encoder, m)
-            } else {
-              let len = 1
-              for (; i + len < messages.length && messages[i + len] instanceof dbtypes.OpValue; len++) { /* nop */ }
-              protocol.writeOps(encoder, /** @type {Array<dbtypes.OpValue>} */ (messages.slice(i, i + len)))
-              i += len - 1
-            }
-          }
-        })
-        this.send(encodedMessage)
-        const maxBufferedAmount = 3000_000
+        log(this, 'sending ops', () => { return `number of ops=${messages.length}` })
+        for (let i = 0; i < messages.length; i++) {
+          this.send(messages[i])
+        }
         if (this.ws.getBufferedAmount() > maxBufferedAmount) {
           // @todo make timeout (30s) configurable
           return promise.until(30000, () => this.isDestroyed || this.ws.getBufferedAmount() < maxBufferedAmount)
@@ -159,12 +142,24 @@ class WSClient extends observable.ObservableV2 {
     }
   }
 
+  /**
+   * @param {number} [code]
+   * @param {string} [reason]
+   */
+  close (code, reason) {
+    console.log('closing conn')
+    this.ws.end(code, reason)
+    this.destroy()
+  }
+
   destroy () {
+    if (this.isDestroyed) return
+    console.log('destroyed comm', new Error('destroyed comm').stack)
     super.destroy()
-    console.log('destroyed comm')
-    this.nextOps = []
     this.isDestroyed = true
+    this.nextOps = []
     this.streamController.abort('destroyed')
+    if (!this._isClosed) this.ws.end()
   }
 }
 
@@ -226,8 +221,11 @@ export class WSServer {
         drain: ws => {
           ws.getUserData().client._drain()
         },
-        close: ws => {
-          ws.getUserData().client.destroy()
+        close: (ws, code, message) => {
+          const client = ws.getUserData().client
+          log(client, 'close', 'client disconnected' + JSON.stringify({ code, message }))
+          client._isClosed = true
+          client.destroy()
         }
       })).any('/*', (res, _req) => {
         res.end('Oh no, you found me 🫣')

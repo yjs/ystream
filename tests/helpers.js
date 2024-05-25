@@ -78,11 +78,11 @@ export const emptyUpdate = Y.encodeStateAsUpdateV2(new Y.Doc())
 class TestClient {
   /**
    * @param {Ystream.Ystream} ystream
-   * @param {{ owner: string, collection: string }} collectionDef
+   * @param {{ owner: string, name: string }} collectionDef
    */
-  constructor (ystream, { owner, collection }) {
+  constructor (ystream, { owner, name }) {
     this.ystream = ystream
-    this.collection = ystream.getCollection(owner, collection)
+    this.collection = ystream.getCollection(owner, name)
     this.doc1 = this.collection.getYdoc('ydoc')
   }
 
@@ -98,7 +98,7 @@ class TestScenario {
    */
   constructor (name) {
     this.name = name
-    this.collectionDef = { owner: buffer.toBase64(owner), collection: this.name }
+    this.collectionDef = { owner: buffer.toBase64(owner), name: this.name }
     /**
      * @type {Array<TestClient>}
      */
@@ -114,7 +114,7 @@ class TestScenario {
     const dbname = `.test_dbs/${randTestRunName}-${this.name}-${this.cliNum++}`
     await Ystream.remove(dbname)
     const ystream = await Ystream.open(dbname, {
-      comms: [new wscomm.WebSocketComm('ws://localhost:9000', [this.collectionDef])]
+      comms: [new wscomm.WebSocketComm('ws://localhost:9000', this.collectionDef)]
     })
     console.log('registering server', testServerIdentity.user, testServerIdentity.user.hash)
     await authentication.registerUser(ystream, testServerIdentity.user, { isTrusted: true })
@@ -169,5 +169,21 @@ export const waitCollectionsSynced = (ycollection1, ycollection2) =>
   promise.untilAsync(async () => {
     const sv1 = await ycollection1.ystream.transact(tr => actions.getStateVector(tr, ycollection1.ystream, ycollection1.ownerBin, ycollection1.collection))
     const sv2 = await ycollection2.ystream.transact(tr => actions.getStateVector(tr, ycollection2.ystream, ycollection2.ownerBin, ycollection2.collection))
+    /**
+     * @param {Ystream} ystream
+     * @return {(entries:any)=>any}
+     */
+    const updateClocks = (ystream) => colEntries => colEntries.map(update => {
+      update.value.localClock = update.key.v
+      if (update.value.client === ystream.clientid) {
+        update.value.clock = update.key.v
+      }
+      return update.value
+    })
+    const ops1 = await ycollection1.ystream.transact(tr => tr.tables.oplog.getEntries({ start: 0 })).then(updateClocks(ycollection1.ystream))
+    const ops2 = await ycollection2.ystream.transact(tr => tr.tables.oplog.getEntries({ start: 0 })).then(updateClocks(ycollection2.ystream))
+    const ops1sv = ops1.reduce((sv, op) => { sv[op.client] = op.clock; return sv }, /** @type {Object<number,number>} */ ({}))
+    const ops2sv = ops2.reduce((sv, op) => { sv[op.client] = op.clock; return sv }, /** @type {Object<number,number>} */ ({}))
+    console.log({ sv1, sv2, ops1: ops1.length, ops2: ops2.length, ops1sv, ops2sv, clientid1: ycollection1.ystream.clientid, clientid2: ycollection2.ystream.clientid })
     return fun.equalityDeep(sv1, sv2)
   }, 0, 100)

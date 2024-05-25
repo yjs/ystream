@@ -47,8 +47,16 @@ export const createOpsReader = (ystream, startClock, owner, collection) => {
           ops = ops.filter(op => op.localClock >= nextClock)
         }
         if (ops.length > 0) {
-          nextClock = ops[ops.length - 1].localClock + 1
-          controller.enqueue({ messages: ops, origin })
+          const endClock = ops[ops.length - 1].localClock
+          controller.enqueue({
+            messages: [
+              encoding.encode(encoder => {
+                protocol.writeOps(encoder, ops, nextClock, endClock)
+              })
+            ],
+            origin
+          })
+          nextClock = endClock + 1
         }
       }
     },
@@ -73,9 +81,6 @@ export const createOpsReader = (ystream, startClock, owner, collection) => {
               }
               return update.value
             }))
-          if (ops.length > 0) {
-            nextClock = ops[ops.length - 1].localClock + 1
-          }
           if (ops.length === 0) {
             nextClock = math.max(ystream._eclock || 0, nextClock)
             console.log('sending synced step')
@@ -93,10 +98,17 @@ export const createOpsReader = (ystream, startClock, owner, collection) => {
             })
             registeredListener = true
             ystream.on('ops', /** @type {(ops: Array<dbtypes.OpValue>) => void} */ (listener))
-            break
+            return
           }
-          while (ops.length > 0) {
-            controller.enqueue({ messages: ops.splice(0, 1000), origin: 'db' })
+          if (ops.length > 0) {
+            const endClock = ops[ops.length - 1].localClock
+            const messages = [
+              encoding.encode(encoder => {
+                protocol.writeOps(encoder, ops, nextClock, endClock)
+              })
+            ]
+            controller.enqueue({ messages, origin: 'db' })
+            nextClock = endClock + 1
           }
         } while ((controller.desiredSize || 0) > 0)
       })
@@ -105,7 +117,7 @@ export const createOpsReader = (ystream, startClock, owner, collection) => {
       ystream.off('ops', /** @type {(ops: Array<dbtypes.OpValue>) => void} */ (listener))
     }
   }, {
-    highWaterMark: 200,
+    highWaterMark: 1,
     size (message) {
       return message.messages.length
     }
@@ -534,16 +546,24 @@ export const getClocks = async (tr, ystream) => {
 
 /**
  * @param {Ystream} ystream
+ * @param {import('../comm.js').Comm} comm
  * @param {Array<dbtypes.OpValue>} ops
  * @param {dbtypes.UserIdentity} user
  * @param {any} origin
+ * @param {number} startClock
+ * @param {number} endClock
  */
-export const applyRemoteOps = async (ystream, ops, user, origin) => {
+export const applyRemoteOps = async (ystream, comm, ops, user, origin, startClock, endClock) => {
   /**
    * @type {Array<dbtypes.OpValue<any>>}
    */
   const filteredOpsPermsChecked = []
   await ystream.transact(async tr => {
+    if (comm.nextClock < startClock) {
+      console.error('some operations seem to be missing. Reconnecting!', { commNextClock: comm.nextClock, startClock, endClock })
+      comm.close(1002, 'some operations seem to be missing')
+      return
+    }
     /**
      * Maps from encoded(collection/doc/clientid) to clock
      * @type {Map<string,number>}
@@ -608,6 +628,8 @@ export const applyRemoteOps = async (ystream, ops, user, origin) => {
       const clocksKey = dbtypes.ClocksKey.decode(decoding.createDecoder(buffer.fromBase64(encClocksKey)))
       tr.tables.clocks.set(clocksKey, clockValue)
     })
+    // setting next clock to receive
+    comm.nextClock = endClock + 1
   })
   emitOpsEvent(ystream, filteredOpsPermsChecked, origin)
   // @todo only apply doc ops to ydocs if sender has write permissions

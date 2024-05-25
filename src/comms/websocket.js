@@ -12,9 +12,8 @@ import * as webcrypto from 'lib0/webcrypto'
 import * as utils from '../utils.js'
 import * as promise from 'lib0/promise'
 import * as dbtypes from '../api/dbtypes.js' // eslint-disable-line
-import * as map from 'lib0/map'
-import * as buffer from 'lib0/buffer'
 import * as actions from '../api/actions.js'
+import * as buffer from 'lib0/buffer'
 
 const _log = logging.createModuleLogger('@y/stream/websocket')
 /**
@@ -85,16 +84,16 @@ class WebSocketCommInstance extends ObservableV2 {
     this._readMessageQueue = queue.create()
     this.streamController = new AbortController()
     this.wsconnected = false
+    this.nextClock = 0
     const randomIdentifier = Math.random() // @todo remove
     /**
-     * @type {WritableStream<{ messages: Array<Uint8Array|dbtypes.OpValue>, origin: any }>}
+     * @type {WritableStream<{ messages: Array<Uint8Array>, origin: any }>}
      */
     this.writer = new WritableStream({
       write: ({ messages, origin }) => {
         if (!this.wsconnected) {
           return this.destroy()
         }
-        if (origin === this) return // skep messages received from this communication channel
         log(this, 'sending ops', () => `buffered amount=${this.ws?.bufferedAmount}, `, () => { return `number of ops=${messages.length}, first=` }, () => {
           const m = messages[0]
           if (m instanceof dbtypes.OpValue) {
@@ -104,20 +103,9 @@ class WebSocketCommInstance extends ObservableV2 {
             return 'control message'
           }
         })
-        const encodedMessage = encoding.encode(encoder => {
-          for (let i = 0; i < messages.length; i++) {
-            const m = messages[i]
-            if (m instanceof Uint8Array) {
-              encoding.writeUint8Array(encoder, m)
-            } else {
-              let len = 1
-              for (; i + len < messages.length && messages[i + len] instanceof dbtypes.OpValue; len++) { /* nop */ }
-              protocol.writeOps(encoder, /** @type {Array<dbtypes.OpValue>} */ (messages.slice(i, i + len)))
-              i += len - 1
-            }
-          }
-        })
-        this.send(encodedMessage)
+        for (let i = 0; i < messages.length; i++) {
+          this.send(messages[i])
+        }
         const maxBufferedAmount = 3000_000
         if ((this.ws?.bufferedAmount || 0) > maxBufferedAmount) {
           // @todo make timeout (30000ms) configurable
@@ -135,6 +123,7 @@ class WebSocketCommInstance extends ObservableV2 {
     ws.onerror = /** @param {any} event */ (event) => {
       log(this, 'error', event)
       handler.emit('connection-error', [/** @type {ErrorEvent} */(event), handler])
+      this.destroy()
     }
     ws.onclose = (event) => {
       handler.emit('status', [{
@@ -143,9 +132,6 @@ class WebSocketCommInstance extends ObservableV2 {
       }, handler])
       handler.emit('connection-close', [/** @type {any} */(event), handler])
       log(this, 'close', 'close-code: ', event.code)
-      if (this.handler.comm === this) {
-        this.handler._setupNewComm()
-      }
       this.destroy()
     }
     ws.onopen = () => {
@@ -165,15 +151,10 @@ class WebSocketCommInstance extends ObservableV2 {
     this.on('authenticated', async () => {
       const encoder = encoding.createEncoder()
       await ystream.transact(tr =>
-        promise.all(map.map(ystream.collections, (cols, _owner) => {
-          const owner = buffer.fromBase64(_owner)
-          return promise.all(map.map(cols, (_, collection) =>
-            actions.getClock(tr, ystream, this.clientid, owner, collection).then(clock => {
-              protocol.writeRequestOps(encoder, owner, collection, clock)
-              return clock
-            })
-          ))
-        }))
+        actions.getClock(tr, ystream, this.clientid, handler.collection.owner, handler.collection.name).then(clock => {
+          this.nextClock = clock
+          return protocol.writeRequestOps(encoder, handler.collection.owner, handler.collection.name, clock)
+        })
       )
       this.send(encoding.toUint8Array(encoder))
     })
@@ -194,18 +175,33 @@ class WebSocketCommInstance extends ObservableV2 {
     this.destroy()
   }
 
+  /**
+   * @param {number} [code]
+   * @param {string} [reason]
+   */
+  close (code, reason) {
+    this.wsconnected = false
+    this.ws.close(code, reason)
+    this.destroy()
+  }
+
   destroy () {
+    if (this.isDestroyed) return
+    const shouldrecreate = this.handler.comm === this
     super.destroy()
-    this.handler.comm = null
-    this.ws.close()
-    this.isDestroyed = true
-    this.ystream.comms.delete(this)
-    this._readMessageQueue = queue.create()
     this.streamController.abort('destroyed')
+    this.ystream.comms.delete(this)
+    this.isDestroyed = true
+    this.handler.comm = null
+    this.wsconnected && this.ws.close()
+    this._readMessageQueue = queue.create()
     if (this.wsconnected) {
       this.handler.wsUnsuccessfulReconnects++
     }
     this.wsconnected = false
+    if (shouldrecreate) {
+      this.handler._setupNewComm()
+    }
   }
 }
 
@@ -217,13 +213,13 @@ class WebSocketHandlerInstance extends ObservableV2 {
   /**
    * @param {import('../ystream.js').Ystream} ystream
    * @param {string} url
-   * @param {Array<{ owner: string, collection: string }>} collections
+   * @param {{ owner: Uint8Array, name: string }} collection
    */
-  constructor (ystream, url, collections) {
+  constructor (ystream, url, collection) {
     super()
     this.ystream = ystream
     this.url = url
-    this.collections = collections
+    this.collection = collection
     this.shouldConnect = true
     this.wsUnsuccessfulReconnects = 0
     this.maxBackoffTime = 60000
@@ -238,12 +234,13 @@ class WebSocketHandlerInstance extends ObservableV2 {
 
   _setupNewComm () {
     if (!this.shouldConnect) return
-    this.comm?.destroy()
+    const prevComm = this.comm
+    this.comm = null
+    prevComm?.destroy()
     // Start with no reconnect timeout and increase timeout by
     // using exponential backoff starting with 100ms
     const setup = () => {
-      this.comm?.destroy()
-      if (this.shouldConnect) {
+      if (this.shouldConnect && this.comm === null) {
         this.comm = new WebSocketCommInstance(this)
       }
     }
@@ -263,7 +260,7 @@ class WebSocketHandlerInstance extends ObservableV2 {
   destroy () {
     super.destroy()
     this.shouldConnect = false
-    this.comm?.destroy()
+    this.comm?.close()
   }
 }
 
@@ -273,17 +270,17 @@ class WebSocketHandlerInstance extends ObservableV2 {
 export class WebSocketComm {
   /**
    * @param {string} url
-   * @param {Array<{ owner: string, collection: string }>} collections
+   * @param {{ owner: string, name: string }} collection
    */
-  constructor (url, collections) {
+  constructor (url, collection) {
     this.url = url
-    this.collections = collections
+    this.collection = collection
   }
 
   /**
    * @param {Ystream} ystream
    */
   init (ystream) {
-    return new WebSocketHandlerInstance(ystream, this.url, this.collections)
+    return new WebSocketHandlerInstance(ystream, this.url, { owner: buffer.fromBase64(this.collection.owner), name: this.collection.name })
   }
 }

@@ -113,7 +113,7 @@ export const testPerformanceLoadingManyDocs = async tc => {
 export const testPerformanceSyncingManyDocs = async tc => {
   const N = 10000
   const th = await helpers.createTestScenario(tc)
-  const { owner, collection } = th.collectionDef
+  const { owner, name: collectionName } = th.collectionDef
   const server = th.server
   if (server === null) {
     return t.skip()
@@ -134,7 +134,7 @@ export const testPerformanceSyncingManyDocs = async tc => {
     }
     const lastClientDoc = collection1.getYdoc('doc-' + (N - 1))
     await lastClientDoc.whenLoaded
-    const lastServerDoc = server.ystream.getCollection(owner, collection).getYdoc('doc-' + (N - 1))
+    const lastServerDoc = server.ystream.getCollection(owner, collectionName).getYdoc('doc-' + (N - 1))
     await lastServerDoc.whenLoaded
     await helpers.waitDocsSynced(lastClientDoc, lastServerDoc)
     t.assert(lastServerDoc.getMap().get('i') === N - 1)
@@ -142,7 +142,7 @@ export const testPerformanceSyncingManyDocs = async tc => {
   const [{ collection: collection2 }] = await th.createClients(1)
   await t.measureTimeAsync(`Sync ${N} documents with content from server`, async () => {
     const lastClientDoc = collection2.getYdoc('doc-' + (N - 1))
-    const lastServerDoc = server.ystream.getCollection(owner, collection).getYdoc('doc-' + (N - 1))
+    const lastServerDoc = server.ystream.getCollection(owner, collectionName).getYdoc('doc-' + (N - 1))
     await lastServerDoc.whenLoaded
     await helpers.waitDocsSynced(lastClientDoc, lastServerDoc)
     t.assert(lastClientDoc.getMap().get('i') === N - 1)

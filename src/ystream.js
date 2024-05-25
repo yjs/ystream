@@ -200,11 +200,7 @@ export class Ystream extends ObservableV2 {
         this.commHandlers.add(comm.init(this))
       )
     })
-    this._tr = null
-    /**
-     * @type {Array<Promise<any>>}
-     */
-    this._childTrs = []
+    this.isDestroyed = false
   }
 
   /**
@@ -227,12 +223,14 @@ export class Ystream extends ObservableV2 {
   }
 
   destroy () {
+    if (this.isDestroyed) return
+    this.isDestroyed = true
     this.collections.forEach(owner => {
       owner.forEach(collection => {
         collection.destroy()
       })
     })
-    this.comms.forEach(comm => comm.destroy())
+    this.commHandlers.forEach(handler => handler.destroy())
     bc.unsubscribe('@y/stream#' + this.dbname, this._esub)
     return this._db.destroy()
   }

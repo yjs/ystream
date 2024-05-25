@@ -37,15 +37,15 @@ const testUser = {
 }
 const owner = buffer.toBase64(testUser.user.hash)
 
-const collection = 'my-notes-app'
+const collectionName = 'my-notes-app'
 const y = await Ystream.open(path.join(observePath, '.ystream/yfs'), {
-  comms: [new wscomm.WebSocketComm('ws://localhost:9000', [{ owner, collection }])]
+  comms: [new wscomm.WebSocketComm('ws://localhost:9000', { owner, name: collectionName })]
 })
 
 await authentication.registerUser(y, dbtypes.UserIdentity.decode(decoding.createDecoder(buffer.fromBase64(testServerUser))), { isTrusted: true })
 await authentication.setUserIdentity(y, testUser.user, await testUser.user.publicKey, testUser.privateKey)
 
-const ycollection = y.getCollection(owner, collection)
+const ycollection = y.getCollection(owner, collectionName)
 
 const yfs = new Yfs(ycollection, { observePath })
 

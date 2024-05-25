@@ -54,15 +54,29 @@ export class Comm extends observable.ObservableV2 {
   set sentChallengeAnswer (_v) { error.methodUnimplemented() }
 
   /**
-   * @type {WritableStream<{ messages: Array<Uint8Array|import('./api/dbtypes.js').OpValue>, origin: any }>}
+   * @type {WritableStream<{ messages: Array<Uint8Array>, origin: any }>}
    */
   get writer () { return error.methodUnimplemented() }
   /**
    * @type {AbortController}
    */
   get streamController () { return error.methodUnimplemented() }
+  /**
+   * The next expected clock from the remote client.
+   * @type {number}
+   */
+  get nextClock () { return error.methodUnimplemented() }
+  set nextClock (_v) { error.methodUnimplemented() }
 
   destroy () {
+    error.methodUnimplemented()
+  }
+
+  /**
+   * @param {number} [code]
+   * @param {string} [reason]
+   */
+  close (code, reason) {
     error.methodUnimplemented()
   }
 }
@@ -70,7 +84,7 @@ export class Comm extends observable.ObservableV2 {
 
 /* c8 ignore start */
 export class CommHandler {
-
+  destroy () {}
 }
 /* c8 ignore end */
 

@@ -31,9 +31,13 @@ const messageChallengeAnswer = 5 // second message
 /**
  * @param {encoding.Encoder} encoder
  * @param {Array<dbtypes.OpValue>} ops
+ * @param {number} startClock
+ * @param {number} endClock
  */
-export const writeOps = (encoder, ops) => {
+export const writeOps = (encoder, ops, startClock, endClock) => {
   encoding.writeUint8(encoder, messageOps)
+  encoding.writeVarUint(encoder, startClock)
+  encoding.writeVarUint(encoder, endClock)
   encoding.writeVarUint(encoder, ops.length)
   ops.forEach(op => {
     op.encode(encoder)
@@ -45,7 +49,9 @@ export const writeOps = (encoder, ops) => {
  * @param {Ystream} ystream
  * @param {import('./comm.js').Comm} comm
  */
-const readOps = (decoder, ystream, comm) => {
+const readOps = async (decoder, ystream, comm) => {
+  const startClock = decoding.readVarUint(decoder)
+  const endClock = decoding.readVarUint(decoder)
   const numOfOps = decoding.readVarUint(decoder)
   /**
    * @type {Array<dbtypes.OpValue>}
@@ -54,11 +60,11 @@ const readOps = (decoder, ystream, comm) => {
   for (let i = 0; i < numOfOps; i++) {
     ops.push(/** @type {dbtypes.OpValue} */ (dbtypes.OpValue.decode(decoder)))
   }
-  log(ystream, comm, 'Ops', `received ${ops.length} ops. decoderlen=${decoder.arr.length}. first: clock=${ops[0].clock},client=${ops[0].client}`)
+  log(ystream, comm, 'Ops', `received ${ops.length} ops. decoderlen=${decoder.arr.length}. first: clock=${ops[0].clock},client=${ops[0].client},startClock=${startClock},endClock=${endClock}`)
   if (comm.user == null) {
     error.unexpectedCase()
   }
-  return actions.applyRemoteOps(ystream, ops, comm.user, comm)
+  await actions.applyRemoteOps(ystream, comm, ops, comm.user, comm, startClock, endClock)
 }
 
 /**
@@ -218,13 +224,13 @@ const readInfo = async (encoder, decoder, ystream, comm) => {
       await authentication.registerUser(ystream, user)
     } else {
       log(ystream, comm, 'destroying', 'User not registered')
-      comm.destroy()
+      comm.close(1002, 'User not registered')
       return
     }
   }
   const parsedClaim = await deviceClaim.verify(await user.publicKey)
   if (parsedClaim.payload.iss !== user.ekey) {
-    comm.destroy()
+    comm.close(1002, 'invalid user claim')
     error.unexpectedCase()
   }
   await ystream.transact(async tr => {
@@ -284,6 +290,7 @@ export const writeChallengeAnswer = async (encoder, ystream, challenge, comm) =>
  * @param {import('./comm.js').Comm} comm - this is used to set the "synced" property
  */
 export const readMessage = async (encoder, decoder, ystream, comm) => {
+  if (ystream.isDestroyed) return
   try {
     do {
       const messageType = decoding.readUint8(decoder)
@@ -294,7 +301,7 @@ export const readMessage = async (encoder, decoder, ystream, comm) => {
       } else {
         if (comm.deviceClaim == null || comm.user == null || !comm.isAuthenticated) {
           log(ystream, comm, 'closing unauthenticated connection')
-          comm.destroy()
+          comm.close(1002, 'closing unauthenticated connection')
         }
         switch (messageType) {
           case messageOps: {
@@ -325,7 +332,8 @@ export const readMessage = async (encoder, decoder, ystream, comm) => {
     }
     return null
   } catch (err) {
+    debugger
     log(ystream, comm, 'Info rejection', 'Closing connection because of unexpected error', /** @type {Error} */ (err).stack)
-    comm.destroy()
+    comm.close(1007, 'Unexpected error when parsing message')
   }
 }
