@@ -10,6 +10,7 @@ import * as dbtypes from './api/dbtypes.js' // eslint-disable-line
 import * as bc from 'lib0/broadcastchannel'
 import * as buffer from 'lib0/buffer'
 import * as logging from 'lib0/logging'
+import * as eventloop from 'lib0/eventloop'
 
 const _log = logging.createModuleLogger('@y/stream')
 /**
@@ -72,7 +73,7 @@ const emitOpsEvent = async (tr, ystream, ops, origin) => {
     if (ops.length > 0) {
       bc.publish('@y/stream#' + ystream.dbname, ops[ops.length - 1].localClock, ystream)
       ystream._eclock = ops[ops.length - 1].localClock + 1
-      setImmediate(() => {
+      eventloop.enqueue(() => {
         // @todo make this a proper log
         log(ystream, 'emitting ops', () => `localClockRange=${ops[0].localClock}-${ops[ops.length - 1].localClock}`)
         ystream.emit('ops', [ops, tr.origin, tr.isRemote])

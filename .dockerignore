@@ -2,3 +2,7 @@
 .env.backup*
 node_modules
 dist
+coverage
+.test_dbs
+tmp
+.ystream
