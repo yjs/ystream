@@ -319,9 +319,6 @@ const _computeEvents = async yfs => {
                 if (d.remove > 0) {
                   qdelta.push({ delete: d.remove })
                 }
-                if (d.remove > 0) {
-                  qdelta.push({ delete: d.remove })
-                }
                 if (d.insert.length > 0) {
                   qdelta.push({ insert: d.insert })
                 }
