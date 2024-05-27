@@ -1,6 +1,7 @@
 import chokidar from 'chokidar'
 import fs from 'node:fs'
 import path from 'node:path'
+import * as Y from 'yjs'
 
 import * as random from 'lib0/random'
 import * as array from 'lib0/array'
@@ -9,6 +10,25 @@ import * as error from 'lib0/error'
 import * as Ystream from '@y/stream' // eslint-disable-line
 import * as actions from '@y/stream/api/actions' // eslint-disable-line
 import * as logging from 'lib0/logging'
+import * as diff from 'lib0/diff'
+
+const textFileExtensions = new Set([
+  'txt', 'md', 'js', 'ts', 'tsx', 'jsx'
+])
+
+const _fileExtensionRegex = /.+\.(\w+)$/
+/**
+ * @param {string} fname
+ */
+const getFileExtension = fname => _fileExtensionRegex.exec(fname)?.[1] ?? null
+
+/**
+ * @param {string} fname
+ */
+const isTextFile = (fname) => {
+  const ext = getFileExtension(fname)
+  return ext != null ? textFileExtensions.has(ext) : false
+}
 
 /**
  * @extends {observable.ObservableV2<{}>}
@@ -52,6 +72,8 @@ export default class Yfs extends observable.ObservableV2 {
     }
     // @todo start consuming starting at last checkpoint
     this.ystream.on('ops', this._opsObserver)
+    this._destroyObserver = this.destroy.bind(this)
+    this.ystream.on('destroy', this._destroyObserver)
 
     this.chokidarWatch = chokidar.watch(observePath, { ignoreInitial: false, ignored: /\.ystream/ /*, awaitWriteFinish: true */ })
       .on('all', (type, cwdPath) => {
@@ -60,6 +82,13 @@ export default class Yfs extends observable.ObservableV2 {
         let content = null
         if (type === 'add' || type === 'change') {
           content = fs.readFileSync(path.join(observePath, observeRelPath))
+          try {
+            if (isTextFile(observeRelPath)) {
+              content = content.toString('utf8')
+            }
+          } catch (e) {
+            console.warn('error parsing text file', e)
+          }
         }
         _eventsToCompute.push({ type, path: observeRelPath, content })
         if (_eventsToCompute.length === 1) _computeEvents(this)
@@ -77,7 +106,7 @@ export default class Yfs extends observable.ObservableV2 {
  * @param {import('@y/stream').YTransaction} tr
  * @param {Yfs} yfs
  * @param {string} docid
- * @return {Promise<{ type: 'binaryFile', content: Buffer }|{ type: 'dir' }|{ type: 'skip' }|null>}
+ * @return {Promise<{ type: 'binaryFile', content: Buffer }|{ type: 'dir' }|{ type: 'skip' }|{ type: 'text', content: Y.Text }|null>}
  */
 const getFileContent = async (tr, yfs, docid) => {
   const fi = await yfs.ycollection.getFileInfo(tr, docid)
@@ -91,6 +120,17 @@ const getFileContent = async (tr, yfs, docid) => {
       return { type: 'skip' }
     }
     return { type: 'binaryFile', content }
+  }
+  if (fi.ftype === 'text') {
+    const ydoc = new Y.Doc()
+    const yupdates = await yfs.ycollection.getYdocUpdates(tr, docid)
+    if (yupdates == null) return null
+    ydoc.transact(tr => {
+      yupdates.forEach(update => {
+        Y.applyUpdateV2(ydoc, update)
+      })
+    })
+    return { type: 'text', content: ydoc.getText() }
   }
   if (fi.ftype === 'dir') {
     return { type: 'dir' }
@@ -146,6 +186,19 @@ const _renderFiles = async (yfs) => {
             // console.log('writing file', { docPath, strPath, ycontent: /** @type {any} */ (ycontent).content?.toString?.().slice(0, 50) || ycontent, fileContent: fileContent?.toString?.().slice(0, 50), ypath: docPath })
             fs.writeFileSync(strPath, ycontent.content)
             // console.log('file written!', { strPath })
+          }
+        } else if (ycontent.type === 'text') {
+          const ycontentStr = ycontent.content.toString()
+          // console.log('trying to read file', { strPath, docPath, docid })
+          const fileContent = fs.existsSync(strPath) ? fs.readFileSync(strPath) : null
+          let fileContentStr = null
+          if (fileContent != null) {
+            try {
+              fileContentStr = fileContent.toString('utf8')
+            } catch (e) { /* nop */ }
+          }
+          if (fileContentStr !== ycontentStr) {
+            fs.writeFileSync(strPath, ycontentStr)
           }
         } else {
           // console.log('checking if folder exists', { strPath })
@@ -228,18 +281,65 @@ const _computeEvents = async yfs => {
             //   filePath,
             //   ids: await ycollection.getDocIdsFromPath(tr, null, filePath)
             // })
-            const { docid, isNew } = await mkPath(tr, ycollection.ystream, ycollection.ownerBin, ycollection.collection, null, arrPath, 'binary')
+            //
+            const isTextContent = typeof event.content === 'string'
+            const { docid, isNew } = await mkPath(tr, ycollection.ystream, ycollection.ownerBin, ycollection.collection, null, arrPath, isTextContent ? 'text' : 'binary')
             if (isNew) {
-              // console.log('created file', { filePath, eventContent: event.content?.toString().slice(0, 50) })
-              await ycollection.setLww(tr, docid, event.content)
-            } else {
-              const currContent = await ycollection.getLww(tr, docid)
-              // console.log('updating file', { filePath, currContent: Buffer.from(currContent).toString().slice(0, 50), eventContent: event.content?.toString().slice(0, 50) })
-              if (Buffer.isBuffer(event.content) && currContent instanceof Uint8Array && array.equalFlat(currContent, event.content)) {
-                // console.log('nop...')
-                // nop
+              if (isTextContent) {
+                const ydoc = new Y.Doc()
+                ydoc.getText().insert(0, /** @type {string} */ (event.content))
+                await actions.addYDocUpdate(tr, ycollection.ystream, ycollection.ownerBin, ycollection.collection, docid, Y.encodeStateAsUpdateV2(ydoc))
               } else {
                 await ycollection.setLww(tr, docid, event.content)
+              }
+            } else {
+              if (isTextContent) {
+                const currDocUpdates = await ycollection.getYdocUpdates(tr, docid)
+                const currDoc = new Y.Doc()
+                if (currDocUpdates != null) {
+                  currDoc.transact(() => {
+                    currDocUpdates.forEach(update => {
+                      Y.applyUpdateV2(currDoc, update)
+                    })
+                  })
+                }
+                const textContent = /** @type {string} */ (event.content)
+                const d = diff.simpleDiffString(currDoc.getText().toString(), textContent)
+                // apply diff and catch the updates
+                /**
+                 * @type {Array<Uint8Array>}
+                 */
+                const updates = []
+                currDoc.on('updateV2', update => updates.push(update))
+                console.log('delta', d)
+                /**
+                 * @type {Array<any>}
+                 */
+                const qdelta = [{ retain: d.index }]
+                if (d.remove > 0) {
+                  qdelta.push({ delete: d.remove })
+                }
+                if (d.remove > 0) {
+                  qdelta.push({ delete: d.remove })
+                }
+                if (d.insert.length > 0) {
+                  qdelta.push({ insert: d.insert })
+                }
+                if (qdelta.length > 1) {
+                  currDoc.getText().applyDelta(qdelta)
+                }
+                for (let i = 0; i < updates.length; i++) {
+                  actions.addYDocUpdate(tr, ycollection.ystream, ycollection.ownerBin, ycollection.collection, docid, updates[i])
+                }
+              } else {
+                const currContent = await ycollection.getLww(tr, docid)
+                // console.log('updating file', { filePath, currContent: Buffer.from(currContent).toString().slice(0, 50), eventContent: event.content?.toString().slice(0, 50) })
+                if (Buffer.isBuffer(event.content) && currContent instanceof Uint8Array && array.equalFlat(currContent, event.content)) {
+                  // console.log('nop...')
+                  // nop
+                } else {
+                  await ycollection.setLww(tr, docid, event.content)
+                }
               }
             }
             break

@@ -16,7 +16,6 @@ import * as authorization from '../api/authorization.js'
 import * as protocol from '../protocol.js'
 import * as isodb from 'isodb'
 import * as wsUtils from '../comms/websocket-utils.js'
-import * as error from 'lib0/error'
 
 /**
  * @typedef {import('../ystream.js').Ystream} Ystream
@@ -389,6 +388,37 @@ export const setLww = async (tr, ystream, owner, collection, key, val) => {
 export const getLww = async (tr, ystream, owner, collection, key) => {
   const lww = await getDocOpsMerged(tr, ystream, owner, collection, key, operations.OpLwwType)
   return lww === null ? undefined : lww.op.val
+}
+
+/**
+ * @param {import('@y/stream').YTransaction} tr
+ * @param {Ystream} ystream
+ * @param {Uint8Array} owner
+ * @param {string} collection
+ * @param {string} docid
+ * @return {Promise<Array<Uint8Array>|null>}
+ */
+export const getYDocUpdates = async (tr, ystream, owner, collection, docid) => {
+  const [
+    updates,
+    isDeleted
+  ] = await promise.all([
+    getDocOps(tr, ystream, owner, collection, docid, operations.OpYjsUpdateType, 0),
+    isDocDeleted(tr, ystream, owner, collection, docid)
+  ])
+  return isDeleted ? null : updates.map(update => update.op.update)
+}
+
+/**
+ * @param {import('@y/stream').YTransaction} tr
+ * @param {Ystream} ystream
+ * @param {Uint8Array} owner
+ * @param {string} collection
+ * @param {string} docid
+ * @param {Uint8Array} update
+ */
+export const addYDocUpdate = async (tr, ystream, owner, collection, docid, update) => {
+  await addOp(tr, ystream, owner, collection, docid, new operations.OpYjsUpdate(update))
 }
 
 /**

@@ -100,7 +100,7 @@ export class YTransaction {
 }
 
 /**
- * @extends ObservableV2<{ ops:function(Array<dbtypes.OpValue>,any,boolean):void, authenticate:function():void, "collection-opened":(collection:Collection)=>void }>
+ * @extends ObservableV2<{ ops:function(Array<dbtypes.OpValue>,any,boolean):void, authenticate:function():void, "collection-opened":(collection:Collection)=>void, "destroy": (ystream: Ystream)=>void }>
  */
 export class Ystream extends ObservableV2 {
   /**
@@ -210,6 +210,7 @@ export class Ystream extends ObservableV2 {
     })
     this.commHandlers.forEach(handler => handler.destroy())
     bc.unsubscribe('@y/stream#' + this.dbname, this._esub)
+    this.emit('destroy', [this])
     return this._db.destroy()
   }
 }
@@ -259,6 +260,23 @@ export class Collection extends ObservableV2 {
   /**
    * @param {import('@y/stream').YTransaction} tr
    * @param {string} docid
+   */
+  getYdocUpdates (tr, docid) {
+    return actions.getYDocUpdates(tr, this.ystream, this.ownerBin, this.collection, docid)
+  }
+
+  /**
+   * @param {import('@y/stream').YTransaction} tr
+   * @param {string} docid
+   * @param {Uint8Array} update
+   */
+  addYdocUpdate (tr, docid, update) {
+    return actions.addYDocUpdate(tr, this.ystream, this.ownerBin, this.collection, docid, update)
+  }
+
+  /**
+   * @param {import('@y/stream').YTransaction} tr
+   * @param {string} docid
    * @return {Promise<{ name: string, parent: null | string, ftype: 'dir'|'binary'|'text' } | null>}
    */
   async getFileInfo (tr, docid) {
@@ -288,7 +306,6 @@ export class Collection extends ObservableV2 {
    * @param {import('@y/stream').YTransaction} tr
    * @param {string} docid
    * @param {number} [endLocalClock]
-   * @return {Promise<Array<{ docid: string, docname: string, ftype: 'binary'|'dir'|'text' }>>}
    */
   getDocPath (tr, docid, endLocalClock) {
     return actions.getDocPath(tr, this.ystream, this.ownerBin, this.collection, docid, endLocalClock)

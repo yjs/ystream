@@ -97,7 +97,7 @@ export const testYfsBasics = async tc => {
     cp.execSync('echo newcontent > ./tmp/clone/index.js')
     await promise.wait(300)
     await waitFilesSynced()
-    t.compare(fs.readFileSync('./tmp/init/index.js').toString(), 'newcontent\n')
+    t.compare(fs.readFileSync('./tmp/init/index.js').toString('utf8'), 'newcontent')
   })
   await t.measureTimeAsync('copy node_modules', async () => {
     cp.execSync('cp -rf ./node_modules ./tmp/init/')
