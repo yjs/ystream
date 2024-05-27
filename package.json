@@ -18,7 +18,7 @@
     "debug:node": "LOG=* node --inspect-brk tests/index.js",
     "ws-server": "LOG=* node ./bin/server.js",
     "ws-server:inspect": "LOG=* node --inspect-brk ./bin/server.js",
-    "test": "LOG=* c8 --100 node tests/index.js",
+    "test": "LOG=* c8 node tests/index.js",
     "test-coverage": "npm run lint && npm run dist && nyc --check-coverage --lines 100 --branches 100 --functions 100 --statements 100 node --unhandled-rejections=strict ./dist/test.cjs --repetition-time 50 --production",
     "test-inspect": "node --inspect-brk --unhandled-rejections=strict ./test.js --repetition-time 50 --production",
     "test-extensive": "node test.js && npm test -- --repetition-time 30000 --extensive",
