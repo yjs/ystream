@@ -25,7 +25,9 @@
     "test-code-coverage": "npm run dist && nyc --reporter html node ./dist/test.cjs --production",
     "lint": "standard && tsc",
     "preversion": "npm run clean && npm run types && rm -rf dist/tests dist/demo",
-    "postpublish": "npm run clean"
+    "postpublish": "npm run clean",
+    "server:docker:build": "docker build . -t ystream",
+    "server:docker:run": "docker run -p 9000:9000 --name ystream ystream "
   },
   "files": [
     "dist",
