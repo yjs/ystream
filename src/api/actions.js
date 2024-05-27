@@ -12,11 +12,11 @@ import * as operations from '../operations.js'
 import * as utils from '../utils.js'
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
-import { emitOpsEvent } from '../ystream.js'
 import * as authorization from '../api/authorization.js'
 import * as protocol from '../protocol.js'
 import * as isodb from 'isodb'
 import * as wsUtils from '../comms/websocket-utils.js'
+import * as error from 'lib0/error'
 
 /**
  * @typedef {import('../ystream.js').Ystream} Ystream
@@ -46,19 +46,18 @@ export const createOpsReader = (ystream, startClock, owner, collection, comm) =>
   const stream = new ReadableStream({
     start (controller) {
       listener = (ops, origin) => {
-        if (origin === comm && origin !== null) return
+        // if (origin === comm && origin !== null) return
         if (collection != null) {
           ops = ops.filter(op => op.client !== comm.clientid && op.localClock >= nextClock && op.collection === collection && array.equalFlat(op.owner, /** @type {Uint8Array} */ (owner)))
         } else {
           ops = ops.filter(op => op.client !== comm.clientid && op.localClock >= nextClock)
         }
-        while (ops.length > 0) {
-          const opsToSend = ops.splice(0, opsPerMessage)
-          const endClock = opsToSend[opsToSend.length - 1].localClock
+        if (ops.length > 0) {
+          const endClock = ops[ops.length - 1].localClock
           controller.enqueue({
             messages: [
               encoding.encode(encoder => {
-                protocol.writeOps(encoder, opsToSend, nextClock, endClock)
+                protocol.writeOps(encoder, ops, nextClock, endClock)
               })
             ],
             origin
@@ -69,17 +68,22 @@ export const createOpsReader = (ystream, startClock, owner, collection, comm) =>
     },
     async pull (controller) {
       if (registeredListener) return
-      console.log('desired size: ', controller.desiredSize, { nextClock })
+      console.log('desired size: ', controller.desiredSize, { nextClock, remoteClientId: comm.clientid })
       return ystream.transact(async tr => {
+        /**
+         * nextClock must only be updated when `writeOps` is called (as the "startclock").
+         * nextDbPullClock keeps track of the next ops to pull from the database
+         */
+        let nextDbPullClock = nextClock
         do {
           let ops = owner != null && collection != null
             ? await tr.tables.oplog.indexes.collection.getEntries({
-              start: new dbtypes.CollectionKey(owner, collection, nextClock),
+              start: new dbtypes.CollectionKey(owner, collection, nextDbPullClock),
               end: new dbtypes.CollectionKey(owner, collection, number.HIGHEST_UINT32),
               limit: opsPerMessage
             }).then(colEntries => _updateOpClocksHelper(ystream, colEntries))
             : await tr.tables.oplog.getEntries({
-              start: new isodb.AutoKey(nextClock),
+              start: new isodb.AutoKey(nextDbPullClock),
               limit: opsPerMessage
             }).then(colEntries => colEntries.map(update => {
               update.value.localClock = update.key.v
@@ -88,9 +92,7 @@ export const createOpsReader = (ystream, startClock, owner, collection, comm) =>
               }
               return update.value
             }))
-          ops = ops.filter(op => op.client !== comm.clientid)
           if (ops.length === 0) {
-            nextClock = math.max(ystream._eclock || 0, nextClock)
             console.log('sending synced step')
             controller.enqueue({
               messages: [
@@ -110,14 +112,19 @@ export const createOpsReader = (ystream, startClock, owner, collection, comm) =>
           }
           if (ops.length > 0) {
             const endClock = ops[ops.length - 1].localClock
-            const messages = [
-              encoding.encode(encoder => {
-                // @todo, here, you can filter ops by remote client
-                protocol.writeOps(encoder, ops, nextClock, endClock)
-              })
-            ]
-            controller.enqueue({ messages, origin: 'db' })
-            nextClock = endClock + 1
+            nextDbPullClock = endClock + 1
+            // filter out ops that the remote client created before sending them
+            ops = ops.filter(op => op.client !== comm.clientid)
+            if (ops.length > 0) {
+              const messages = [
+                encoding.encode(encoder => {
+                  protocol.writeOps(encoder, ops, nextClock, endClock)
+                })
+              ]
+              controller.enqueue({ messages, origin: 'db' })
+              // nextClock is only updated when we send ops
+              nextClock = endClock + 1
+            }
           }
         } while ((controller.desiredSize || 0) > 0)
       })
@@ -135,7 +142,7 @@ export const createOpsReader = (ystream, startClock, owner, collection, comm) =>
 }
 
 /**
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
@@ -175,7 +182,7 @@ const _updateOpClocksHelper = (ystream, updates) => updates.map(update => {
 
 /**
  * @template {operations.OpTypeIds} TYPE
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
@@ -195,7 +202,7 @@ export const getDocOps = async (tr, ystream, owner, collection, doc, type, start
 
 /**
  * @template {operations.OpTypeIds} TYPE
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
@@ -215,7 +222,7 @@ export const getDocOpsLast = async (tr, ystream, owner, collection, doc, type) =
 
 /**
  * @template {operations.OpTypeIds} TYPE
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
@@ -237,7 +244,7 @@ export const getDocOpsMerged = async (tr, ystream, owner, collection, doc, type,
 }
 
 /**
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
@@ -250,7 +257,7 @@ export const isDocDeleted = async (tr, ystream, owner, collection, docid, endLoc
 }
 
 /**
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
@@ -266,16 +273,16 @@ export const deleteDoc = async (tr, ystream, owner, collection, docid) => {
 }
 
 /**
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
- * @param {Ystream} ystream
+ * @param {import('@y/stream').YTransaction} tr
+ * @param {Ystream} _ystream
  * @param {Uint8Array} owner
  * @param {string} collection
- * @param {string} parent
+ * @param {string|null} docid
  * @return {Promise<Array<{ docid: string, docname: string }>>}
  */
-export const getDocChildren = async (tr, ystream, owner, collection, parent) => {
+export const getDocChildren = async (tr, _ystream, owner, collection, docid) => {
   const entries = await tr.tables.childDocs.getEntries({
-    prefix: { owner, collection, parent }
+    prefix: { owner, collection, parent: docid }
   })
   return entries.map(({ key, value }) => ({ docname: key.childname, docid: value.v }))
 }
@@ -285,11 +292,11 @@ export const getDocChildren = async (tr, ystream, owner, collection, parent) => 
  */
 
 /**
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
- * @param {string} parentid
+ * @param {string?} parentid
  * @return {Promise<Array<ParentChildMapping>>}
  */
 export const getDocChildrenRecursive = async (tr, ystream, owner, collection, parentid) => {
@@ -308,11 +315,11 @@ export const getDocChildrenRecursive = async (tr, ystream, owner, collection, pa
 }
 
 /**
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
- * @param {string} rootid
+ * @param {string|null} rootid
  * @param {Array<string>} path
  * @return {Promise<Array<string>>}
  */
@@ -324,23 +331,40 @@ export const getDocIdsFromPath = async (tr, ystream, owner, collection, rootid, 
 }
 
 /**
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
- * @param {string} childid
- * @param {string|null} parentDoc
- * @param {string} childname
- * @return {Promise<void>}
+ * @param {string} docid
+ * @return {Promise<{ name: string, parent: null | string, ftype: 'dir'|'binary'|'text' } | null>}
  */
-export const setDocParent = async (tr, ystream, owner, collection, childid, parentDoc, childname) => {
-  if (parentDoc === undefined) throw new Error('parentDoc must not be undefined') // @todo remove!
-  const co = await getDocOpsMerged(tr, ystream, owner, collection, childid, operations.OpChildOfType)
-  await addOp(tr, ystream, owner, collection, childid, new operations.OpChildOf(co?.op.cnt || 0, parentDoc, childname))
+export const getFileInfo = async (tr, ystream, owner, collection, docid) => {
+  const fo = await getDocOpsMerged(tr, ystream, owner, collection, docid, operations.OpFileInfoType)
+  if (fo == null) {
+    return null
+  }
+  const { name, parent, ftype } = fo.op
+  return { name, parent, ftype }
 }
 
 /**
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
+ * @param {Ystream} ystream
+ * @param {Uint8Array} owner
+ * @param {string} collection
+ * @param {string} docid
+ * @param {string} docname
+ * @param {string|null} parentDoc
+ * @param {'dir'|'binary'|'text'} ftype
+ * @return {Promise<void>}
+ */
+export const setFileInfo = async (tr, ystream, owner, collection, docid, docname, parentDoc, ftype) => {
+  const co = await getDocOpsMerged(tr, ystream, owner, collection, docid, operations.OpFileInfoType)
+  await addOp(tr, ystream, owner, collection, docid, new operations.OpFileInfo(1 + (co?.op.cnt ?? 0), docname, parentDoc, ftype))
+}
+
+/**
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
@@ -355,7 +379,7 @@ export const setLww = async (tr, ystream, owner, collection, key, val) => {
 }
 
 /**
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
@@ -368,13 +392,13 @@ export const getLww = async (tr, ystream, owner, collection, key) => {
 }
 
 /**
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
  * @param {string} doc
  * @param {number} [endLocalClock]
- * @return {Promise<Array<{ docid: string, docname: string | null }>>}
+ * @return {Promise<Array<{ docid: string, docname: string, ftype: 'dir'|'binary'|'text' }>|null>}
  */
 export const getDocPath = async (tr, ystream, owner, collection, doc, endLocalClock) => {
   /**
@@ -382,16 +406,20 @@ export const getDocPath = async (tr, ystream, owner, collection, doc, endLocalCl
    */
   let currDoc = doc
   /**
-   * @type {Array<{ docid: string, docname: string | null }>}
+   * @type {Array<{ docid: string, docname: string, ftype: 'dir'|'binary'|'text' }>}
    */
   const path = []
   while (currDoc != null) {
     /**
-     * @type {dbtypes.OpValue<operations.OpChildOf> | null}
+     * @type {dbtypes.OpValue<operations.OpFileInfo> | null}
      */
-    const parentOp = await getDocOpsMerged(tr, ystream, owner, collection, currDoc, operations.OpChildOfType, 0, endLocalClock)
-    path.unshift({ docid: currDoc, docname: parentOp?.op.childname || null })
-    currDoc = parentOp?.op.parent || null
+    const fileInfoOp = await getDocOpsMerged(tr, ystream, owner, collection, currDoc, operations.OpFileInfoType, 0, endLocalClock)
+    if (fileInfoOp == null) {
+      console.error('docpath is empty. might be an issue.', { currDoc, path, endLocalClock })
+      return null
+    }
+    path.unshift({ docid: currDoc, docname: fileInfoOp.op.name, ftype: fileInfoOp.op.ftype })
+    currDoc = fileInfoOp.op.parent ?? null
   }
   return path
 }
@@ -399,7 +427,7 @@ export const getDocPath = async (tr, ystream, owner, collection, doc, endLocalCl
 /**
  * @template {operations.OpTypeIds} TYPEID
  * @template {InstanceType<operations.typeMap[TYPEID]>} TYPE
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
@@ -447,7 +475,7 @@ const filterDuplicateNoPermIndexes = noperms => {
  * Returns up to N documents that we don't have permission to. Only the first entry for each doc is
  * returned.
  *
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
@@ -458,7 +486,7 @@ export const getNoPerms = async (tr, ystream, owner, collection) =>
     .then(ks => filterDuplicateNoPermIndexes(ks || []))
 
 /**
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {number} clientid
  * @param {Uint8Array?} owner
@@ -488,7 +516,7 @@ export const getClock = async (tr, ystream, clientid, owner, collection) => {
  * Generally, it is discouraged to use this function. Usually, there is no need to do a full state
  * comparison. However, this can be useful for writing tests.
  *
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
@@ -503,7 +531,7 @@ export const getStateVector = async (tr, ystream, owner, collection) => {
 /**
  * Confirm that a all updates of a doc/collection/* from a client have been received.
  *
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {number} clientid
  * @param {Uint8Array?} owner
@@ -519,7 +547,7 @@ export const confirmClientClock = async (tr, ystream, clientid, owner, collectio
 }
 
 /**
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
@@ -529,15 +557,15 @@ export const confirmClientClock = async (tr, ystream, clientid, owner, collectio
 export const addOp = async (tr, ystream, owner, collection, doc, opv) => {
   const op = new dbtypes.OpValue(ystream.clientid, 0, owner, collection, doc, opv)
   const key = await tr.tables.oplog.add(op)
+  tr.ops.push(op)
   op.clock = key.v
   op.localClock = key.v
   tr.tables.clocks.set(new dbtypes.ClocksKey(op.client, owner, collection), new dbtypes.ClientClockValue(op.clock, op.clock))
   await opv.integrate(tr, ystream, op)
-  emitOpsEvent(ystream, [op], ystream)
 }
 
 /**
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  */
 export const getClocks = async (tr, ystream) => {
@@ -580,6 +608,8 @@ export const applyRemoteOps = async (ystream, comm, ops, user, origin, startCloc
     } catch (e) {}
   }
   await ystream.transact(async tr => {
+    tr.isRemote = true
+    console.log('applying remote ops', { startClock, endClock, commNextClock: comm.nextClock })
     if (comm.nextClock < startClock) {
       console.error('some operations seem to be missing. Reconnecting!', { commNextClock: comm.nextClock, startClock, endClock })
       comm.close(wsUtils.statusConsistencyError, 'some operations seem to be missing')
@@ -639,6 +669,7 @@ export const applyRemoteOps = async (ystream, comm, ops, user, origin, startCloc
       if (colperms?.get('*') || colperms?.get(op.doc)) {
         const localClock = await tr.tables.oplog.add(op)
         op.localClock = localClock.v
+        tr.ops.push(op)
         await op.op.integrate(tr, ystream, op)
         clientClockEntries.set(encodeClocksKey(op.client, op.owner, op.collection), new dbtypes.ClientClockValue(op.clock, op.localClock))
         filteredOpsPermsChecked.push(op)
@@ -659,8 +690,7 @@ export const applyRemoteOps = async (ystream, comm, ops, user, origin, startCloc
     })
     // setting next clock to receive
     comm.nextClock = endClock + 1
-  })
-  emitOpsEvent(ystream, filteredOpsPermsChecked, origin)
+  }, origin)
   // @todo only apply doc ops to ydocs if sender has write permissions
   /**
    * @type {Map<string, Map<string, Map<string, Array<dbtypes.OpValue>>>>}

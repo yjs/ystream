@@ -11,9 +11,9 @@ import { Ystream } from '../ystream.js' // eslint-disable-line
 import * as webcrypto from 'lib0/webcrypto'
 import * as utils from '../utils.js'
 import * as promise from 'lib0/promise'
-import * as dbtypes from '../api/dbtypes.js' // eslint-disable-line
 import * as actions from '../api/actions.js'
 import * as buffer from 'lib0/buffer'
+import * as eventloop from 'lib0/eventloop'
 
 const _log = logging.createModuleLogger('@y/stream/websocket')
 /**
@@ -97,7 +97,7 @@ class WebSocketCommInstance extends ObservableV2 {
         for (let i = 0; i < messages.length; i++) {
           this.send(messages[i])
         }
-        const maxBufferedAmount = 3000_000
+        const maxBufferedAmount = 3_000_000
         if ((this.ws?.bufferedAmount || 0) > maxBufferedAmount) {
           return promise.until(0, () => (this.ws?.bufferedAmount || 0) < maxBufferedAmount)
         }
@@ -149,6 +149,12 @@ class WebSocketCommInstance extends ObservableV2 {
         })
       )
       this.send(encoding.toUint8Array(encoder))
+    })
+    // try to reconnect if not connected within 10 seconds
+    eventloop.timeout(3_000, () => {
+      if (!this.isDestroyed && !this.wsconnected) {
+        this.close()
+      }
     })
   }
 

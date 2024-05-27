@@ -15,7 +15,7 @@ export const OpYjsUpdateType = 0
 export const OpNoPermissionType = 1
 export const OpPermType = 2
 export const OpLwwType = 3
-export const OpChildOfType = 4
+export const OpFileInfoType = 4
 export const OpDeleteDocType = 5
 
 /**
@@ -76,7 +76,7 @@ export class AbstractOp {
    * (e.g. AbstractOp.cleanup(merged, deletedOps), which is called only once before calling event
    * handlers or returning the promise)
    *
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('@y/stream').YTransaction} _tr
    * @param {import('./ystream.js').Ystream} _ystream
    * @param {import('./api/dbtypes.js').OpValue} _op
    * @return {Promise<void>|void}
@@ -87,7 +87,7 @@ export class AbstractOp {
 
   /**
    * @param {import('./ystream.js').Ystream} _ystream
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('./ystream.js').YTransaction} _tr
    * @param {import('./api/dbtypes.js').OpValue} _op
    * @return {Promise<void>|void}
    */
@@ -206,7 +206,7 @@ export class OpPerm {
   }
 
   /**
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('@y/stream').YTransaction} _tr
    * @param {import('./ystream.js').Ystream} _ystream
    * @param {import('./api/dbtypes.js').OpValue} _op
    */
@@ -215,7 +215,7 @@ export class OpPerm {
 
   /**
    * @param {import('./ystream.js').Ystream} _ystream
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('@y/stream').YTransaction} _tr
    * @param {import('./api/dbtypes.js').OpValue} _op
    */
   unintegrate (_ystream, _tr, _op) {
@@ -287,7 +287,7 @@ export class OpNoPermission {
   }
 
   /**
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('@y/stream').YTransaction} _tr
    * @param {import('./ystream.js').Ystream} _ystream
    * @param {import('./api/dbtypes.js').OpValue} _op
    */
@@ -296,7 +296,7 @@ export class OpNoPermission {
 
   /**
    * @param {import('./ystream.js').Ystream} _ystream
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('@y/stream').YTransaction} _tr
    * @param {import('./api/dbtypes.js').OpValue} _op
    */
   unintegrate (_ystream, _tr, _op) {
@@ -352,7 +352,7 @@ export class OpLww {
   }
 
   /**
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('@y/stream').YTransaction} _tr
    * @param {import('./ystream.js').Ystream} _ystream
    * @param {import('./api/dbtypes.js').OpValue} _op
    */
@@ -361,7 +361,7 @@ export class OpLww {
 
   /**
    * @param {import('./ystream.js').Ystream} _ystream
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('@y/stream').YTransaction} _tr
    * @param {import('./api/dbtypes.js').OpValue} _op
    */
   unintegrate (_ystream, _tr, _op) {
@@ -377,23 +377,25 @@ export class OpLww {
  *
  * @implements AbstractOp
  */
-export class OpChildOf {
+export class OpFileInfo {
   /**
    * @param {number} cnt
+   * @param {string} docname
    * @param {string|null} parent
-   * @param {string|null} childname
+   * @param {'dir'|'binary'|'text'} ftype
    */
-  constructor (cnt, parent, childname) {
+  constructor (cnt, docname, parent, ftype) {
     this.cnt = cnt
     this.parent = parent
-    this.childname = childname
+    this.name = docname
+    this.ftype = ftype
   }
 
   /**
-   * @return {OpChildOfType}
+   * @return {OpFileInfoType}
    */
   get type () {
-    return OpChildOfType
+    return OpFileInfoType
   }
 
   /**
@@ -401,58 +403,55 @@ export class OpChildOf {
    */
   encode (encoder) {
     // bit0: has parent
-    // bit1: has childname
-    encoding.writeUint8(encoder, (this.parent === null ? 0 : 1) | (this.childname === null ? 0 : 2))
+    encoding.writeUint8(encoder, (this.parent === null ? 0 : 1))
     encoding.writeVarUint(encoder, this.cnt)
     if (this.parent !== null) encoding.writeVarString(encoder, this.parent)
-    if (this.childname !== null) encoding.writeVarString(encoder, this.childname)
+    encoding.writeVarString(encoder, this.name)
+    encoding.writeVarString(encoder, this.ftype)
   }
 
   /**
    * @param {decoding.Decoder} decoder
-   * @return {OpChildOf}
+   * @return {OpFileInfo}
    */
   static decode (decoder) {
     const info = decoding.readUint8(decoder)
     const cnt = decoding.readVarUint(decoder)
     const parent = (info & 1) === 1 ? decoding.readVarString(decoder) : null
-    const childname = (info & 2) === 2 ? decoding.readVarString(decoder) : null
-    return new OpChildOf(cnt, parent, childname)
+    const name = decoding.readVarString(decoder)
+    const ftype = decoding.readVarString(decoder)
+    return new OpFileInfo(cnt, name, parent, /** @type {any} */ (ftype))
   }
 
   /**
    * This works similarly to the lww merge.
    *
-   * @param {Array<import('./api/dbtypes.js').OpValue<OpChildOf>>} ops
+   * @param {Array<import('./api/dbtypes.js').OpValue<OpFileInfo>>} ops
    * @param {boolean} _gc
-   * @return {import('./api/dbtypes.js').OpValue<OpChildOf>}
+   * @return {import('./api/dbtypes.js').OpValue<OpFileInfo>}
    */
   static merge (ops, _gc) {
     return array.fold(ops, ops[0], (o1, o2) => (o1.op.cnt > o2.op.cnt || (o1.op.cnt === o2.op.cnt && o1.client > o2.client)) ? o1 : o2)
   }
 
   /**
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
+   * @param {import('@y/stream').YTransaction} tr
    * @param {import('./ystream.js').Ystream} ystream
    * @param {import('./api/dbtypes.js').OpValue} op
    */
   async integrate (tr, ystream, op) {
-    if (this.parent !== null) {
-      tr.tables.childDocs.set(new dbtypes.ParentKey(op.owner, op.collection, this.parent, this.childname ?? op.doc, op.localClock), op.doc)
-    }
+    tr.tables.childDocs.set(new dbtypes.ParentKey(op.owner, op.collection, this.parent, this.name ?? op.doc, op.localClock), op.doc)
     // force that conflicts are unintegrated
     await mergeDocOps(tr, ystream, op.owner, op.collection, op.doc, this.type)
   }
 
   /**
    * @param {import('./ystream.js').Ystream} _ystream
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
+   * @param {import('@y/stream').YTransaction} tr
    * @param {import('./api/dbtypes.js').OpValue} op
    */
   unintegrate (_ystream, tr, op) {
-    if (this.parent !== null) {
-      tr.tables.childDocs.remove(new dbtypes.ParentKey(op.owner, op.collection, this.parent, this.childname ?? op.doc, op.localClock))
-    }
+    tr.tables.childDocs.remove(new dbtypes.ParentKey(op.owner, op.collection, this.parent, this.name ?? op.doc, op.localClock))
   }
 }
 
@@ -514,7 +513,7 @@ export class OpYjsUpdate {
   }
 
   /**
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('@y/stream').YTransaction} _tr
    * @param {import('./ystream.js').Ystream} _ystream
    * @param {import('./api/dbtypes.js').OpValue} _op
    */
@@ -523,7 +522,7 @@ export class OpYjsUpdate {
 
   /**
    * @param {import('./ystream.js').Ystream} _stream
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('@y/stream').YTransaction} _tr
    * @param {import('./api/dbtypes.js').OpValue} _op
    */
   unintegrate (_stream, _tr, _op) {
@@ -568,7 +567,7 @@ export class OpDeleteDoc {
   }
 
   /**
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('@y/stream').YTransaction} _tr
    * @param {import('./ystream.js').Ystream} _ystream
    * @param {import('./api/dbtypes.js').OpValue} _op
    */
@@ -580,7 +579,7 @@ export class OpDeleteDoc {
 
   /**
    * @param {import('./ystream.js').Ystream} _ystream
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} _tr
+   * @param {import('@y/stream').YTransaction} _tr
    * @param {import('./api/dbtypes.js').OpValue} _op
    */
   unintegrate (_ystream, _tr, _op) { }
@@ -591,6 +590,6 @@ export const typeMap = {
   [OpNoPermissionType]: OpNoPermission,
   [OpPermType]: OpPerm,
   [OpLwwType]: OpLww,
-  [OpChildOfType]: OpChildOf,
+  [OpFileInfoType]: OpFileInfo,
   [OpDeleteDocType]: OpDeleteDoc
 }

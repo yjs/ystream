@@ -8,9 +8,16 @@ import { ObservableV2 } from 'lib0/observable'
 import * as actions from './api/actions.js'
 import * as dbtypes from './api/dbtypes.js' // eslint-disable-line
 import * as bc from 'lib0/broadcastchannel'
-import * as operations from './operations.js'
 import * as buffer from 'lib0/buffer'
-import * as eventloop from 'lib0/eventloop'
+import * as logging from 'lib0/logging'
+
+const _log = logging.createModuleLogger('@y/stream')
+/**
+ * @param {Ystream} ystream
+ * @param {string} type
+ * @param {...any} args
+ */
+const log = (ystream, type, ...args) => _log(logging.PURPLE, `(local=${ystream.clientid.toString(36).slice(0, 4)}${ystream.syncsEverything ? ',server=true' : ''}) `, logging.ORANGE, '[' + type + '] ', logging.GREY, ...args.map(arg => typeof arg === 'function' ? arg() : arg))
 
 /**
  * @typedef {Object} YstreamConf
@@ -20,54 +27,6 @@ import * as eventloop from 'lib0/eventloop'
  */
 
 /**
- * Join two lists of ops (sorted by localClock) into a single list while filtering out duplicates.
- *
- * ops from `bs` will be preferred if the localClock matches.
- *
- * @param {Array<dbtypes.OpValue>} as
- * @param {Array<dbtypes.OpValue>} bs
- * @param {number} nextExpectedClock the value of localClock of the last op added to joined
- */
-const _joinOpArrays = (as, bs, nextExpectedClock) => {
-  if (as.length === 0) return bs
-  if (bs.length === 0) return as
-  let ai = 0
-  let bi = 0
-  /**
-   * @type {Array<dbtypes.OpValue>}
-   */
-  const joined = []
-  while (ai < as.length && bi < bs.length) {
-    const a = as[ai]
-    const b = bs[bi]
-    if (a.localClock < nextExpectedClock) {
-      ai++
-    } else if (b.localClock < nextExpectedClock) {
-      bi++
-    } else if (a.localClock < b.localClock) {
-      ai++
-      joined.push(a)
-      nextExpectedClock = a.localClock + 1
-    } else {
-      bi++
-      joined.push(b)
-      nextExpectedClock = b.localClock + 1
-    }
-  }
-
-  // push the rest to joined
-  if (ai < as.length) {
-    while (ai < as.length && as[ai].localClock < nextExpectedClock) { ai++ }
-    joined.push(...as.slice(ai))
-  }
-  if (bi < bs.length) {
-    while (bi < bs.length && bs[bi].localClock < nextExpectedClock) { bi++ }
-    joined.push(...bs.slice(bi))
-  }
-  return joined
-}
-
-/**
  * Fires the `ops` event.
  *
  * The `ops` event guarantees that ops are emitted in-order (sorted by localClock).
@@ -75,50 +34,68 @@ const _joinOpArrays = (as, bs, nextExpectedClock) => {
  * However, because of async ops from other threads, we can't guarantee that `_emitOpsEvent`
  * receives ops in order. So we need to wait before emitting ops.
  *
+ * This happens from inside of a transaction, so it can't overlap with other transactions.
+ *
+ * @param {YTransaction} tr
  * @param {Ystream} ystream
  * @param {Array<dbtypes.OpValue>} ops
  * @param {any} origin
  */
-const _emitOpsEvent = (ystream, ops, origin) => {
-  if (ops.length === 0) {
-    return
-  }
-  ystream._nextEmitOps = _joinOpArrays(ystream._nextEmitOps, ops, ystream._eclock ?? -1)
-  ystream._nextEmitOpsOrigins.push(origin)
-  if (
-    ystream._emitTimeout === null && ystream._nextEmitOps.length > 0
-    // && (ystream._eclock == null || ystream._nextEmitOps[0].localClock === ystream._eclock)
-  ) {
-    ystream._emitTimeout = eventloop.timeout(0, () => {
-      ystream._emitTimeout = null
-      const nextEmitOps = ystream._nextEmitOps
-      let eclock = ystream._eclock ?? nextEmitOps[0].localClock
-      let emitNowRange = 0
-      for (;
-        emitNowRange < nextEmitOps.length && nextEmitOps[emitNowRange].localClock === eclock;
-        emitNowRange++, eclock++
-      ) { /* nop */ }
-      const emitNow = nextEmitOps.splice(0, emitNowRange)
-      ystream._eclock = eclock
-      if (emitNow.length > 0) {
-        ystream.emit('ops', [emitNow, ystream._nextEmitOpsOrigins.length === 1 ? ystream._nextEmitOpsOrigins[0] : null, true])
+const emitOpsEvent = async (tr, ystream, ops, origin) => {
+  if (ops.length > 0) {
+    if (ystream._eclock == null) {
+      ystream._eclock = ops[0].localClock
+    }
+    const eclock = ystream._eclock
+    ops.sort((o1, o2) => o1.localClock - o2.localClock)
+    while (ops[0].localClock < eclock) {
+      ops.shift()
+    }
+    for (let i = 0; i < ops.length - 1; i++) {
+      if (ops[i].localClock + 1 !== ops[i + 1].localClock) {
+        throw new Error('expected emitted ops to be without holes')
       }
-      if (nextEmitOps.length === 0) {
-        ystream._nextEmitOpsOrigins.length = 0
-      }
-    })
+    }
+    if (ops[0].localClock !== eclock) {
+      origin = 'db'
+      // not expected op, pull from db again
+      ops = await tr.tables.oplog.getEntries({
+        start: new isodb.AutoKey(eclock)
+      }).then(colEntries => colEntries.map(update => {
+        update.value.localClock = update.key.v
+        if (update.value.client === ystream.clientid) {
+          update.value.clock = update.key.v
+        }
+        return update.value
+      }))
+    }
+    if (ops.length > 0) {
+      bc.publish('@y/stream#' + ystream.dbname, ops[ops.length - 1].localClock, ystream)
+      ystream._eclock = ops[ops.length - 1].localClock + 1
+      setImmediate(() => {
+        // @todo make this a proper log
+        log(ystream, 'emitting ops', () => `localClockRange=${ops[0].localClock}-${ops[ops.length - 1].localClock}`)
+        ystream.emit('ops', [ops, tr.origin, tr.isRemote])
+      })
+    }
   }
 }
 
-/**
- * @param {Ystream} ystream
- * @param {Array<dbtypes.OpValue>} ops
- * @param {any} origin
- */
-export const emitOpsEvent = (ystream, ops, origin) => {
-  if (ops.length > 0) {
-    _emitOpsEvent(ystream, ops, origin)
-    bc.publish('@y/stream#' + ystream.dbname, ops[ops.length - 1].localClock, ystream)
+export class YTransaction {
+  /**
+   * @param {isodb.ITransaction<typeof db.def>} db
+   * @param {any} origin
+   */
+  constructor (db, origin) {
+    this.db = db
+    this.tables = db.tables
+    this.objects = db.objects
+    /**
+     * @type {Array<import('./api/dbtypes.js').OpValue>}
+     */
+    this.ops = []
+    this.origin = origin
+    this.isRemote = false
   }
 }
 
@@ -170,26 +147,12 @@ export class Ystream extends ObservableV2 {
      */
     this._eclock = null
     /**
-     * Ops that will be emitted next.
-     * @type {Array<dbtypes.OpValue>}
-     */
-    this._nextEmitOps = []
-    /**
-     * Ops that will be emitted next.
-     * @type {Array<dbtypes.OpValue>}
-     */
-    this._nextEmitOpsOrigins = []
-    /**
-     * @type {eventloop.TimeoutObject?}
-     */
-    this._emitTimeout = null
-    /**
      * Subscribe to broadcastchannel event that is fired whenever an op is added to the database.
      * The localClock of the last op will be emitted.
      */
     this._esub = bc.subscribe('@y/stream#' + this.dbname, /** @param {number} lastOpId */ async (lastOpId, origin) => {
       if (origin !== this) {
-        console.log('received ops via broadcastchannel', lastOpId)
+        log(this, 'received ops via broadcastchannel', lastOpId)
         // @todo reintroduce pulling from a database
         // const ops = await actions.getOps(this, opids[0])
         // _emitOpsEvent(this, ops, 'broadcastchannel')
@@ -204,7 +167,7 @@ export class Ystream extends ObservableV2 {
      */
     this.commHandlers = new Set()
     this.whenAuthenticated.then(() => {
-      console.log(this.clientid.toString(36) + ': connecting to server')
+      log(this, 'adding comms', comms)
       comms.forEach(comm =>
         this.commHandlers.add(comm.init(this))
       )
@@ -224,11 +187,17 @@ export class Ystream extends ObservableV2 {
    * @todo Transactions should have an origin, children should only be added if they have the same
    * origin, never to system transactions
    * @template T
-   * @param {(tr:import('isodb').ITransaction<typeof import('./db.js').def>) => Promise<T>} f
+   * @param {(tr:YTransaction) => Promise<T>} f
+   * @param {any} origin
    * @return {Promise<T>}
    */
-  transact (f) {
-    return this._db.transact(f)
+  transact (f, origin = null) {
+    return this._db.transact(async db => {
+      const tr = new YTransaction(db, origin)
+      const res = await f(tr)
+      await emitOpsEvent(tr, this, tr.ops, tr.origin)
+      return res
+    })
   }
 
   destroy () {
@@ -288,38 +257,46 @@ export class Collection extends ObservableV2 {
   }
 
   /**
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
+   * @param {import('@y/stream').YTransaction} tr
    * @param {string} docid
-   * @return {Promise<string?>}
+   * @return {Promise<{ name: string, parent: null | string, ftype: 'dir'|'binary'|'text' } | null>}
    */
-  async getParent (tr, docid) {
-    const co = await actions.getDocOpsMerged(tr, this.ystream, this.ownerBin, this.collection, docid, operations.OpChildOfType)
-    return co?.op.parent || null
+  async getFileInfo (tr, docid) {
+    return actions.getFileInfo(tr, this.ystream, this.ownerBin, this.collection, docid)
   }
 
   /**
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
+   * This functions sets the fileinfo - making it possible to represent this as a file on a
+   * filesystem.
+   *
+   * It is possible to query the children of a parent. The children can be identified by the docid
+   * (immutable) OR the docname (mutable, but not guaranteed to be unique across devices).
+   *
+   * This function does not overwrite content. The existing file should be deleted manually.
+   *
+   * @param {import('@y/stream').YTransaction} tr
    * @param {string} docid
-   * @return {Promise<string?>}
+   * @param {string} docname
+   * @param {string|null} parentDoc
+   * @param {'dir'|'binary'|'text'} ftype
    */
-  async getDocName (tr, docid) {
-    const co = await actions.getDocOpsMerged(tr, this.ystream, this.ownerBin, this.collection, docid, operations.OpChildOfType)
-    return co?.op.childname || null
+  async setFileInfo (tr, docid, docname, parentDoc, ftype) {
+    return actions.setFileInfo(tr, this.ystream, this.ownerBin, this.collection, docid, docname, parentDoc, ftype)
   }
 
   /**
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
+   * @param {import('@y/stream').YTransaction} tr
    * @param {string} docid
    * @param {number} [endLocalClock]
-   * @return {Promise<Array<{ docid: string, docname: string | null }>>}
+   * @return {Promise<Array<{ docid: string, docname: string, ftype: 'binary'|'dir'|'text' }>>}
    */
   getDocPath (tr, docid, endLocalClock) {
     return actions.getDocPath(tr, this.ystream, this.ownerBin, this.collection, docid, endLocalClock)
   }
 
   /**
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
-   * @param {string} rootid
+   * @param {import('@y/stream').YTransaction} tr
+   * @param {string|null} rootid
    * @param {Array<string>} path
    * @return {Promise<Array<string>>}
    */
@@ -328,48 +305,30 @@ export class Collection extends ObservableV2 {
   }
 
   /**
-   * This functions updates the parent of a doc AND sets the name of the document. It simulates
-   * the behavior of the unix command `mv` "move".
-   *
-   * It is possible to query the children of a parent. The children can be identified by the docid
-   * (immutable) OR the docname (mutable, but not guaranteed to be unique across devices).
-   *
-   * This function does not overwrite content. The existing file should be deleted manually.
-   *
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
-   * @param {string} childid
-   * @param {string|null} parentDoc
-   * @param {string} childname
-   */
-  async setDocParent (tr, childid, parentDoc, childname) {
-    return actions.setDocParent(tr, this.ystream, this.ownerBin, this.collection, childid, parentDoc, childname)
-  }
-
-  /**
    * This function retrieves the children on a document. It simulates the behavior of the `ls` unix
    * command.
    *
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
-   * @param {string} docname
+   * @param {import('@y/stream').YTransaction} tr
+   * @param {string?} docid
    * @return {Promise<Array<{ docid: string, docname: string }>>}
    */
-  getDocChildren (tr, docname) {
-    return actions.getDocChildren(tr, this.ystream, this.ownerBin, this.collection, docname)
+  getDocChildren (tr, docid) {
+    return actions.getDocChildren(tr, this.ystream, this.ownerBin, this.collection, docid)
   }
 
   /**
    * This function retrieves the children on a document. It simulates the behavior of the `ls **\/*
    * -l` unix command.
    *
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
-   * @param {string} docname
+   * @param {import('@y/stream').YTransaction} tr
+   * @param {string?} docname
    */
   getDocChildrenRecursive (tr, docname) {
     return actions.getDocChildrenRecursive(tr, this.ystream, this.ownerBin, this.collection, docname)
   }
 
   /**
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
+   * @param {import('@y/stream').YTransaction} tr
    * @param {string} key
    * @returns {any|undefined} undefined if the value was not defined previously
    */
@@ -378,7 +337,7 @@ export class Collection extends ObservableV2 {
   }
 
   /**
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
+   * @param {import('@y/stream').YTransaction} tr
    * @param {string} key
    * @param {any} val
    * @return the previous values
@@ -388,7 +347,7 @@ export class Collection extends ObservableV2 {
   }
 
   /**
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
+   * @param {import('@y/stream').YTransaction} tr
    * @param {string} docid
    */
   deleteDoc (tr, docid) {
@@ -396,7 +355,7 @@ export class Collection extends ObservableV2 {
   }
 
   /**
-   * @param {import('isodb').ITransaction<typeof import('./db.js').def>} tr
+   * @param {import('@y/stream').YTransaction} tr
    * @param {string} docid
    */
   isDocDeleted (tr, docid) {

@@ -524,7 +524,7 @@ export class ParentKey {
   /**
    * @param {Uint8Array} owner
    * @param {string} collection
-   * @param {string} parent
+   * @param {string?} parent
    * @param {string} childname
    * @param {number} localClock
    */
@@ -537,13 +537,18 @@ export class ParentKey {
   }
 
   /**
-   * @param {{ owner: Uint8Array, collection: string, parent: string, docname?: string }} prefix
+   * @param {{ owner: Uint8Array, collection: string, parent: string|null, docname?: string }} prefix
    */
   static prefix ({ owner, collection, parent, docname }) {
     return encoding.encode(encoder => {
       encoding.writeVarUint8Array(encoder, owner)
       encoding.writeVarString(encoder, collection)
-      encoding.writeVarString(encoder, parent)
+      if (parent == null) {
+        encoding.writeUint8(encoder, 0)
+      } else {
+        encoding.writeUint8(encoder, 1)
+        encoding.writeVarString(encoder, parent)
+      }
       if (docname != null) {
         encoding.writeTerminatedString(encoder, docname)
       }
@@ -556,7 +561,12 @@ export class ParentKey {
   encode (encoder) {
     encoding.writeVarUint8Array(encoder, this.owner)
     encoding.writeVarString(encoder, this.collection)
-    encoding.writeVarString(encoder, this.parent)
+    if (this.parent == null) {
+      encoding.writeUint8(encoder, 0)
+    } else {
+      encoding.writeUint8(encoder, 1)
+      encoding.writeVarString(encoder, this.parent)
+    }
     encoding.writeTerminatedString(encoder, this.childname)
     encoding.writeVarUint(encoder, this.localClock)
   }
@@ -568,7 +578,8 @@ export class ParentKey {
   static decode (decoder) {
     const owner = decoding.readVarUint8Array(decoder)
     const collection = decoding.readVarString(decoder)
-    const doc = decoding.readVarString(decoder)
+    const hasParent = decoding.readUint8(decoder) === 1
+    const doc = hasParent ? decoding.readVarString(decoder) : null
     const childname = decoding.readTerminatedString(decoder)
     const localClock = decoding.readVarUint(decoder)
     return new this(owner, collection, doc, childname, localClock)

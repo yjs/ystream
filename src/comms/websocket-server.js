@@ -34,7 +34,6 @@ import * as actions from '../api/actions.js'
 import * as buffer from 'lib0/buffer'
 import * as array from 'lib0/array'
 import * as wsUtils from './websocket-utils.js'
-import * as url from 'lib0/url'
 
 const expectedBufferedAmount = 512 * 1024 // 512kb
 
@@ -263,6 +262,7 @@ export class WSServer {
           client.destroy()
         }
       })).any('/*', (res, _req) => {
+        console.info('Oh no, you found me 🫣')
         res.end('Oh no, you found me 🫣')
       }).listen(port, (token) => {
         if (token) {

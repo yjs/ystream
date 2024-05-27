@@ -9,7 +9,7 @@ import * as promise from 'lib0/promise'
  */
 
 /**
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
@@ -24,7 +24,7 @@ export const updateCollaborator = async (tr, ystream, owner, collection, doc, us
 }
 
 /**
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
@@ -35,7 +35,7 @@ export const getPermOp = async (tr, ystream, owner, collection, doc) =>
   actions.getDocOpsMerged(tr, ystream, owner, collection, doc, operations.OpPermType).then(opperm => opperm?.op || new operations.OpPerm())
 
 /**
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
@@ -45,7 +45,7 @@ export const getPermOp = async (tr, ystream, owner, collection, doc) =>
 const _checkStreamAccess = (tr, ystream, owner, collection, doc, checker) => getPermOp(tr, ystream, owner, collection, doc).then(checker)
 
 /**
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
@@ -59,7 +59,7 @@ const checkAccess = async (tr, ystream, owner, collection, doc, checker) => {
 }
 
 /**
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection
@@ -69,7 +69,7 @@ const checkAccess = async (tr, ystream, owner, collection, doc, checker) => {
 export const hasReadAccess = async (tr, ystream, owner, collection, doc, user) => user.isTrusted ? promise.resolveWith(true) : checkAccess(tr, ystream, owner, collection, doc, opperm => opperm.hasReadAccess(buffer.toBase64(user.hash)))
 
 /**
- * @param {import('isodb').ITransaction<typeof import('../db.js').def>} tr
+ * @param {import('@y/stream').YTransaction} tr
  * @param {Ystream} ystream
  * @param {Uint8Array} owner
  * @param {string} collection

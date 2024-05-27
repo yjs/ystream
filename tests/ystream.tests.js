@@ -182,26 +182,34 @@ export const testFolderStructure = async tc => {
   const th = await helpers.createTestScenario(tc)
   const [{ collection: collection1, ystream: ystream1 }] = await th.createClients(1)
   await ystream1.transact(async tr => {
-    await collection1.setDocParent(tr, 'A', null, 'a')
-    await collection1.setDocParent(tr, 'B', 'A', 'b')
-    await collection1.setDocParent(tr, 'C', 'B', 'c')
-    await collection1.setDocParent(tr, 'D', 'B', 'd')
-    t.assert(await collection1.getParent(tr, 'A') === null)
-    const a = await collection1.getParent(tr, 'B')
+    await collection1.setFileInfo(tr, 'A', 'a', null, 'dir')
+    await collection1.setFileInfo(tr, 'B', 'b', 'A', 'dir')
+    await collection1.setFileInfo(tr, 'C', 'c', 'B', 'dir')
+    await collection1.setFileInfo(tr, 'D', 'd', 'B', 'dir')
+    /**
+     * @param {string} docid
+     */
+    const getParent = docid => collection1.getFileInfo(tr, docid).then(fi => fi?.parent)
+    /**
+     * @param {string} docid
+     */
+    const getDocName = docid => collection1.getFileInfo(tr, docid).then(fi => fi?.name)
+    t.assert(await getParent('A') === null)
+    const a = await getParent('B')
     console.log(a)
-    t.assert(await collection1.getParent(tr, 'B') === 'A')
-    t.assert(await collection1.getParent(tr, 'D') === 'B')
-    t.assert(await collection1.getParent(tr, 'C') === 'B')
-    console.log('docname A:', await collection1.getDocName(tr, 'A'))
-    t.assert(await collection1.getDocName(tr, 'A') === 'a')
-    t.assert(await collection1.getDocName(tr, 'B') === 'b')
-    t.assert(await collection1.getDocName(tr, 'D') === 'd')
-    t.assert(await collection1.getDocName(tr, 'C') === 'c')
+    t.assert(await getParent('B') === 'A')
+    t.assert(await getParent('D') === 'B')
+    t.assert(await getParent('C') === 'B')
+    console.log('docname A:', await getDocName('A'))
+    t.assert(await getDocName('A') === 'a')
+    t.assert(await getDocName('B') === 'b')
+    t.assert(await getDocName('D') === 'd')
+    t.assert(await getDocName('C') === 'c')
     t.compare(await collection1.getDocChildren(tr, 'A'), [{ docid: 'B', docname: 'b' }])
     t.compare(await collection1.getDocChildren(tr, 'B'), [{ docid: 'C', docname: 'c' }, { docid: 'D', docname: 'd' }]) // should return in alphabetical order
-    t.compare(await collection1.getDocPath(tr, 'A'), [{ docid: 'A', docname: 'a' }])
-    t.compare(await collection1.getDocPath(tr, 'B'), [{ docid: 'A', docname: 'a' }, { docid: 'B', docname: 'b' }])
-    t.compare(await collection1.getDocPath(tr, 'D'), [{ docid: 'A', docname: 'a' }, { docid: 'B', docname: 'b' }, { docid: 'D', docname: 'd' }])
+    t.compare(await collection1.getDocPath(tr, 'A'), [{ docid: 'A', docname: 'a', ftype: 'dir' }])
+    t.compare(await collection1.getDocPath(tr, 'B'), [{ docid: 'A', docname: 'a', ftype: 'dir' }, { docid: 'B', docname: 'b', ftype: 'dir' }])
+    t.compare(await collection1.getDocPath(tr, 'D'), [{ docid: 'A', docname: 'a', ftype: 'dir' }, { docid: 'B', docname: 'b', ftype: 'dir' }, { docid: 'D', docname: 'd', ftype: 'dir' }])
     t.compare(await collection1.getDocChildrenRecursive(tr, 'A'), [
       {
         docid: 'B',
@@ -215,13 +223,13 @@ export const testFolderStructure = async tc => {
     t.compare(await collection1.getDocIdsFromPath(tr, 'A', ['b']), ['B'])
     t.compare(await collection1.getDocIdsFromPath(tr, 'A', ['b', 'c']), ['C'])
     t.compare(await collection1.getDocIdsFromPath(tr, 'A', ['c']), [])
-    await collection1.setDocParent(tr, 'B', null, 'b')
+    await collection1.setFileInfo(tr, 'B', 'b', null, 'dir')
     t.compare(await collection1.getDocChildrenRecursive(tr, 'A'), [])
     t.compare(await collection1.getDocChildrenRecursive(tr, 'B'), [
       { docid: 'C', docname: 'c', children: [] },
       { docid: 'D', docname: 'd', children: [] }
     ])
-    await collection1.setDocParent(tr, 'A', 'B', 'a')
+    await collection1.setFileInfo(tr, 'A', 'a', 'B', 'dir')
     t.compare(await collection1.getDocChildrenRecursive(tr, 'B'), [
       { docid: 'A', docname: 'a', children: [] },
       { docid: 'C', docname: 'c', children: [] },
@@ -254,10 +262,9 @@ export const testDeleteDoc = async tc => {
   ydocCheck.destroy()
   await ystream1.transact(async tr => {
     await collection1.setLww(tr, docid, 'val')
-    await collection1.setDocParent(tr, docid, 'parentid', 'mydoc.md')
+    await collection1.setFileInfo(tr, docid, 'mydoc.md', 'parentid', 'binary')
     t.assert(await collection1.getLww(tr, docid) === 'val')
-    t.assert(await collection1.getParent(tr, docid) === 'parentid')
-    t.assert(await collection1.getDocName(tr, docid) === 'mydoc.md')
+    t.compare(await collection1.getFileInfo(tr, docid), { name: 'mydoc.md', parent: 'parentid', ftype: 'binary' })
     await collection1.deleteDoc(tr, docid)
   })
   const ydocCheck2 = collection1.getYdoc(docid)
@@ -265,8 +272,7 @@ export const testDeleteDoc = async tc => {
   t.compareStrings(ydocCheck2.getText().toString(), '')
   await ystream1.transact(async tr => {
     t.assert(await collection1.getLww(tr, docid) === undefined)
-    t.assert(await collection1.getParent(tr, docid) === null)
-    t.assert(await collection1.getDocName(tr, docid) === null)
+    t.assert(await collection1.getFileInfo(tr, docid) === null)
     await collection1.setLww(tr, docid, 'val')
     t.assert(await collection1.getLww(tr, docid) === undefined)
     // @todo test if deletion works in combination with parents (integration of delete should
