@@ -177,11 +177,11 @@ const _updateOpClocksHelper = (ystream, updates) => {
       return update.value
     } catch (e) {
       needsFiltering = true
-      console.error({ update, v: update.value, fkey: update.fkey }, e)
+      // console.error({ update, v: update.value, fkey: update.fkey }, e)
       return null
     }
   })
-  return /** @type {Array<UPDATE["value"]>} */ (needsFiltering ? m : m.filter(m => m !== null))
+  return /** @type {Array<UPDATE["value"]>} */ (needsFiltering ? m.filter(m => m !== null) : m)
 }
 
 /**

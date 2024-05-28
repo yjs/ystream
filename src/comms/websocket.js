@@ -151,7 +151,7 @@ class WebSocketCommInstance extends ObservableV2 {
       this.send(encoding.toUint8Array(encoder))
     })
     // try to reconnect if not connected within 10 seconds
-    eventloop.timeout(3_000, () => {
+    eventloop.timeout(10_000, () => {
       if (!this.isDestroyed && !this.wsconnected) {
         this.close()
       }
