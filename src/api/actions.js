@@ -165,19 +165,24 @@ export const getUnsyncedDocs = async (tr, ystream, owner, collection) => {
  * @param {Array<UPDATE>} updates
  * @return {Array<UPDATE["value"]>}
  */
-const _updateOpClocksHelper = (ystream, updates) => updates.map(update => {
-  // @todo remove this
-  try {
-    update.value.localClock = update.fkey.v
-    if (update.value.client === ystream.clientid) {
-      update.value.clock = update.fkey.v
+const _updateOpClocksHelper = (ystream, updates) => {
+  let needsFiltering = false
+  const m = updates.map(update => {
+    // @todo remove this
+    try {
+      update.value.localClock = update.fkey.v
+      if (update.value.client === ystream.clientid) {
+        update.value.clock = update.fkey.v
+      }
+      return update.value
+    } catch (e) {
+      needsFiltering = true
+      console.error({ update, v: update.value, fkey: update.fkey }, e)
+      return null
     }
-    return update.value
-  } catch (e) {
-    console.log({ update, v: update.value, fkey: update.fkey })
-    throw e
-  }
-})
+  })
+  return /** @type {Array<UPDATE["value"]>} */ (needsFiltering ? m : m.filter(m => m !== null))
+}
 
 /**
  * @template {operations.OpTypeIds} TYPE

@@ -52,7 +52,7 @@
       "bun": "./src/utils/websocket.node.js",
       "node": "./src/utils/websocket.node.js",
       "types": "./dist/src/utils/websocket.browser.d.ts",
-      "default": "./src/utils/websocket.node.js"
+      "default": "./src/utils/websocket.browser.js"
     },
     "./api/authentication": {
       "types": "./dist/src/api/authentication.d.ts",
