@@ -35,7 +35,6 @@ const owner = buffer.toBase64(testUser.user.hash)
 
 const collectionName = 'my-notes-app'
 const domain = 'wss://ystream-vcsln.ondigitalocean.app' // a remote test server
-// const domain = 'wss://ystream.yjs.dev' // a remote test server
 // const domain = 'ws://localhost:9000'
 const y = await Ystream.open('ystream-demo-app-1', {
   comms: [new wscomm.WebSocketComm(domain, { owner, name: collectionName })]

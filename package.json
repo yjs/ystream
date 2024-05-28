@@ -114,7 +114,9 @@
   },
   "dependencies": {
     "isodb": "^0.1.6",
-    "lib0": "^0.2.82",
+    "lib0": "^0.2.82"
+  },
+  "peerDependencies": {
     "yjs": "^13.5.43"
   },
   "optionalDependencies": {

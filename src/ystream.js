@@ -246,10 +246,18 @@ export class Collection extends ObservableV2 {
    * @param {string} docname
    */
   getYdoc (docname) {
-    const docset = map.setIfUndefined(this.docs, docname, () => new Set())
     const ydoc = new Y.Doc({
       guid: docname
     })
+    return this.bindYdoc(docname, ydoc)
+  }
+
+  /**
+   * @param {string} docname
+   * @param {Y.Doc} ydoc
+   */
+  bindYdoc (docname, ydoc) {
+    const docset = map.setIfUndefined(this.docs, docname, () => new Set())
     docset.add(ydoc)
     ydoc.on('destroy', () => {
       docset.delete(ydoc)
