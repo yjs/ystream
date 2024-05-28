@@ -5,7 +5,10 @@ import * as Y from 'yjs'
 import * as math from 'lib0/math'
 import * as array from 'lib0/array'
 import * as dbtypes from './api/dbtypes.js'
-import { mergeDocOps } from './api/actions.js'
+import { getDocOps, mergeDocOps } from './api/actions.js'
+import * as number from 'lib0/number'
+import * as promise from 'lib0/promise'
+import * as object from 'lib0/object'
 
 /**
  * @typedef {import('isodb').IEncodable} IEncodable
@@ -567,14 +570,20 @@ export class OpDeleteDoc {
   }
 
   /**
-   * @param {import('@y/stream').YTransaction} _tr
-   * @param {import('./ystream.js').Ystream} _ystream
-   * @param {import('./api/dbtypes.js').OpValue} _op
+   * @param {import('@y/stream').YTransaction} tr
+   * @param {import('./ystream.js').Ystream} ystream
+   * @param {import('./api/dbtypes.js').OpValue} op
    */
-  integrate (_tr, _ystream, _op) {
-    /**
-     * @todo get all doc operations here and unintegrate them
-     */
+  async integrate (tr, ystream, op) {
+    // @todo add a test case that creates files and folders and then delete them. The
+    // "getChildrenRecursive" function should not return the deleted children
+    // @todo, specifically only call types that need to be unintegrated
+    await promise.all(object.keys(typeMap).map(async _type => {
+      const type = /** @type {any} */ (number.parseInt(_type))
+      if (type === OpDeleteDocType) { return }
+      const ops = await getDocOps(tr, ystream, op.owner, op.collection, op.doc, type)
+      await promise.all(ops.map(op => op.op.unintegrate(ystream, tr, op)))
+    }))
   }
 
   /**

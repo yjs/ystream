@@ -16,6 +16,15 @@ import * as authorization from '../api/authorization.js'
 import * as protocol from '../protocol.js'
 import * as isodb from 'isodb'
 import * as wsUtils from '../comms/websocket-utils.js'
+import * as logging from 'lib0/logging'
+
+const _log = logging.createModuleLogger('@y/stream/api/actions')
+/**
+ * @param {Ystream} ystream
+ * @param {string} type
+ * @param {...any} args
+ */
+const log = (ystream, type, ...args) => _log(logging.PURPLE, `(local=${ystream.clientid.toString(36).slice(0, 4)}`, logging.ORANGE, '[' + type + '] ', logging.GREY, ...args.map(arg => typeof arg === 'function' ? arg() : arg))
 
 /**
  * @typedef {import('../ystream.js').Ystream} Ystream
@@ -67,7 +76,6 @@ export const createOpsReader = (ystream, startClock, owner, collection, comm) =>
     },
     async pull (controller) {
       if (registeredListener) return
-      console.log('desired size: ', controller.desiredSize, { nextClock, remoteClientId: comm.clientid })
       return ystream.transact(async tr => {
         /**
          * nextClock must only be updated when `writeOps` is called (as the "startclock").
@@ -92,7 +100,6 @@ export const createOpsReader = (ystream, startClock, owner, collection, comm) =>
               return update.value
             }))
           if (ops.length === 0) {
-            console.log('sending synced step')
             controller.enqueue({
               messages: [
                 encoding.encode(encoder => {
@@ -450,7 +457,7 @@ export const getDocPath = async (tr, ystream, owner, collection, doc, endLocalCl
      */
     const fileInfoOp = await getDocOpsMerged(tr, ystream, owner, collection, currDoc, operations.OpFileInfoType, 0, endLocalClock)
     if (fileInfoOp == null) {
-      console.error('docpath is empty. might be an issue.', { currDoc, path, endLocalClock })
+      console.warn('docpath is empty. might be an issue.', { currDoc, path, endLocalClock })
       return null
     }
     path.unshift({ docid: currDoc, docname: fileInfoOp.op.name, ftype: fileInfoOp.op.ftype })
@@ -644,7 +651,7 @@ export const applyRemoteOps = async (ystream, comm, ops, user, origin, startCloc
   }
   await ystream.transact(async tr => {
     tr.isRemote = true
-    console.log('applying remote ops', { startClock, endClock, commNextClock: comm.nextClock })
+    log(ystream, 'applying remote ops', { startClock, endClock, commNextClock: comm.nextClock })
     if (comm.nextClock < startClock) {
       console.error('some operations seem to be missing. Reconnecting!', { commNextClock: comm.nextClock, startClock, endClock })
       comm.close(wsUtils.statusConsistencyError, 'some operations seem to be missing')
@@ -709,7 +716,7 @@ export const applyRemoteOps = async (ystream, comm, ops, user, origin, startCloc
         clientClockEntries.set(encodeClocksKey(op.client, op.owner, op.collection), new dbtypes.ClientClockValue(op.clock, op.localClock))
         filteredOpsPermsChecked.push(op)
       } else {
-        console.log('Not applying op because of missing permission', op, ystream.syncsEverything, user.hash, user.isTrusted)
+        log(ystream, 'Not applying op because of missing permission', op, ystream.syncsEverything, user.hash, user.isTrusted)
       }
     }
     if (ops.length > 0) {

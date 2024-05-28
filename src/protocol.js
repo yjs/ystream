@@ -173,11 +173,11 @@ const readRequestOps = async (decoder, ystream, comm) => {
     log(ystream, comm, 'RequestOps', `requested "${collection}" `, () => ({ nextClock, remoteClientId: comm.clientid }))
   }
   comm.emit('requested-ops', [comm, { collection: { owner, name: collection }, clock: nextClock }])
-  console.log(ystream.clientid, 'subscribing conn to ops', { fcid: comm.clientid, collection, owner })
+  log(ystream, comm, 'subscribing conn to ops', { fcid: comm.clientid, collection, owner })
   // @todo add method to filter by owner & collection
   actions.createOpsReader(ystream, nextClock, owner, collection, comm).pipeTo(comm.writer, { signal: comm.streamController.signal }).catch((reason) => {
+    log(ystream, comm, 'ended pipe', { reason, isDestroyed: comm.isDestroyed })
     comm.close(wsUtils.statusParseError, 'unexpected error reading ops stream')
-    console.log('ended pipe', { reason, isDestroyed: comm.isDestroyed })
   })
 }
 

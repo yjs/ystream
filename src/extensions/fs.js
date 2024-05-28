@@ -311,7 +311,6 @@ const _computeEvents = async yfs => {
                  */
                 const updates = []
                 currDoc.on('updateV2', update => updates.push(update))
-                console.log('delta', d)
                 /**
                  * @type {Array<any>}
                  */

@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import fs from 'fs'
 import * as Ystream from '@y/stream'
 import Yfs from '@y/stream/extensions/fs'
@@ -10,6 +12,7 @@ import * as ecdsa from 'lib0/crypto/ecdsa'
 import * as json from 'lib0/json'
 import * as decoding from 'lib0/decoding'
 import path from 'node:path'
+import * as logging from 'lib0/logging'
 
 const cloneDir = env.getParam('--clone', '')
 const initPath = env.getParam('--init', '')
@@ -37,16 +40,19 @@ const testUser = {
 }
 const owner = buffer.toBase64(testUser.user.hash)
 
-const collectionName = 'my-notes-app-3'
+const collectionOwner = env.getParam('--owner', owner)
+const collectionName = env.getParam('--collection', 'default')
+
 const y = await Ystream.open(path.join(observePath, '.ystream/yfs'), {
-  comms: [new wscomm.WebSocketComm('wss://ystream.yjs.dev', { owner, name: collectionName })]
+  comms: [new wscomm.WebSocketComm('wss://ystream.yjs.dev', { owner: collectionOwner, name: collectionName })]
 })
 
 await authentication.registerUser(y, dbtypes.UserIdentity.decode(decoding.createDecoder(buffer.fromBase64(testServerUser))), { isTrusted: true })
 await authentication.setUserIdentity(y, testUser.user, await testUser.user.publicKey, testUser.privateKey)
 
-const ycollection = y.getCollection(owner, collectionName)
+const ycollection = y.getCollection(collectionOwner, collectionName)
 
-const yfs = new Yfs(ycollection, { observePath })
+// eslint-disable-next-line
+const _yfs = new Yfs(ycollection, { observePath })
 
-console.log({ yfs })
+logging.print(logging.GREEN, 'Started Yfs Daemon', logging.ORANGE, ` observePath="./${observePath}" collection="${collectionOwner},${collectionName}"`)

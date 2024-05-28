@@ -12,7 +12,7 @@ import * as logging from 'lib0/logging'
  *
  * @param {t.TestCase} tc
  */
-export const testYfsSmallTest = async tc => {
+export const testYfsQuickTest = async tc => {
   try {
     fs.rmSync('./tmp', { recursive: true })
   } catch (e) {}
