@@ -13,7 +13,7 @@ import * as logging from 'lib0/logging'
 import * as diff from 'lib0/diff'
 
 const textFileExtensions = new Set([
-  'txt', 'md', 'js', 'ts', 'tsx', 'jsx', 'css'
+  'txt', 'md', 'js', 'ts', 'tsx', 'jsx', 'css', 'norg'
 ])
 
 const _fileExtensionRegex = /.+\.(\w+)$/
