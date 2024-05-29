@@ -9,6 +9,7 @@ export const remove = isodb.deleteDB
 /**
  * @param {string} dbname
  * @param {import('./ystream.js').YstreamConf} [conf]
+ * @return {Promise<import('./ystream.js').Ystream>}
  */
 export const open = async (dbname, conf) => {
   const { idb, isAuthenticated, user, deviceClaim, clientid } = await db.createDb(dbname)

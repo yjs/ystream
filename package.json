@@ -10,6 +10,8 @@
     "url": "https://github.com/sponsors/dmonad"
   },
   "scripts": {
+    "docs": "npm run docs:build && 0serve -o ./docs/index.html",
+    "docs:build": "typedoc src/index.js",
     "demo": "rollup -c && concurrently -r '0serve -o ./demo/index.html' 'rollup -wc' 'npm run ws-server'",
     "clean": "rm -rf dist .ystream .test_dbs tmp coverage",
     "types": "tsc",
@@ -24,14 +26,15 @@
     "test-extensive": "node test.js && npm test -- --repetition-time 30000 --extensive",
     "test-code-coverage": "npm run dist && nyc --reporter html node ./dist/test.cjs --production",
     "lint": "standard && tsc",
-    "preversion": "npm run clean && npm run types && rm -rf dist/tests dist/demo",
+    "preversion": "npm run clean && npm run types && rm -rf dist/tests dist/demo && npm run docs:build",
     "postpublish": "npm run clean",
     "server:docker:build": "docker build . -t ystream",
     "server:docker:run": "docker run -p 9000:9000 --name ystream ystream "
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "docs"
   ],
   "exports": {
     "./package.json": "./package.json",
@@ -109,6 +112,7 @@
     "concurrently": "^7.6.0",
     "rollup": "^4.12.0",
     "standard": "^17.0.0",
+    "typedoc": "^0.25.13",
     "typescript": "^5.1.6",
     "y-codemirror.next": "^0.3.2"
   },

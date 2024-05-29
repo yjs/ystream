@@ -268,7 +268,7 @@ const _computeEvents = async yfs => {
   // console.log('all events to compute', _eventsToCompute)
   while (_eventsToCompute.length > 0) {
     await yfs.ystream.transact(async tr => {
-      for (let iterations = 0; _eventsToCompute.length > 0 && iterations < 300; iterations++) {
+      for (let iterations = 0; _eventsToCompute.length > 0 && iterations < 600; iterations++) {
         const event = _eventsToCompute[0]
         const arrPath = event.path.split(path.sep)
         // const filePath = arrPath.slice(0, -1)
