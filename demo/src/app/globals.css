@@ -1,0 +1,22 @@
+#main {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-flow: row wrap;
+  margin: 0;
+}
+
+body, html, #main {
+  height: 100%;
+}
+
+.filetree {
+  max-width: 300px;
+}
+
+.cm-theme-light, .cm-editor {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  height: 100%;
+}
