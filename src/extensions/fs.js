@@ -75,7 +75,7 @@ export default class Yfs extends observable.ObservableV2 {
     this._destroyObserver = this.destroy.bind(this)
     this.ystream.on('destroy', this._destroyObserver)
 
-    this.chokidarWatch = chokidar.watch(observePath, { ignoreInitial: false, ignored: /\.ystream/ /*, awaitWriteFinish: true */ })
+    this.chokidarWatch = chokidar.watch(observePath, { ignoreInitial: false, ignored: /(\.ystream|node_modules|\.git)/ /*, awaitWriteFinish: true */ })
       .on('all', (type, cwdPath) => {
         const observeRelPath = path.relative(observePath, cwdPath)
         if (observeRelPath === '' || observeRelPath === '.' || observeRelPath.startsWith('..')) return
