@@ -10,21 +10,12 @@ import { WebrtcProvider } from 'y-webrtc'
 import { IndexeddbPersistence } from 'y-indexeddb'
 import ystream from './ystream'
 
-const ydoc = new Y.Doc()
-
-ystream.then(({ y, ycollection }) => {
-  ycollection.bindYdoc('root', ydoc)
-  y.transact(async tr => {
-    await ycollection.setFileInfo(tr, 'root', 'root.md', null, 'text')
-  })
-})
-
 export default function Home () {
-  const [ydoc, setYdoc] = useState(null as null | Y.Doc)
-  return <div id="main">
-    <Filetree onDocSelection={setYdoc}/>
-    {ydoc != null ? <CodeMirror extensions={[javascript(), yCollab(ydoc.getText(), null)]}/> : <div />}
-  </div>
+  return (
+    <div id="main">
+    </div>
+
+  )
 }
 
 
@@ -70,3 +61,12 @@ export default function Home () {
 //     {ydoc != null ? <CodeMirror extensions={[javascript(), yCollab(ydoc.getText(), null)]}/> : <div />}
 //   </div>
 // }
+//
+//
+//
+// ystream.then(({ y, ycollection }) => {
+//   ycollection.bindYdoc('root', ydoc)
+//   y.transact(async tr => {
+//     await ycollection.setFileInfo(tr, 'root', 'root.md', null, 'text')
+//   })
+// })
