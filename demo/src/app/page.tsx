@@ -21,7 +21,7 @@ ystream.then(({ y, ycollection }) => {
 
 export default function Home () {
   const [ydoc, setYdoc] = useState(null as null | Y.Doc)
-  return <div id="main">x
+  return <div id="main">
     <Filetree onDocSelection={setYdoc}/>
     {ydoc != null ? <CodeMirror extensions={[javascript(), yCollab(ydoc.getText(), null)]}/> : <div />}
   </div>
