@@ -19,7 +19,7 @@ const initYstream = async (): Promise<{ y: Ystream.Ystream, ycollection: Ystream
     user: dbtypes.UserIdentity.decode(decoding.createDecoder(buffer.fromBase64(testUserRaw.user)))
   }
   const owner = buffer.toBase64(testUser.user.hash)
-  const collectionName = 'lfy'
+  const collectionName = 'ystream-24-10'
 
   const y: Ystream.Ystream = await Ystream.open('.ystream', {
     comms: [new wscomm.WebSocketComm('wss://ystream.yjs.dev', { owner, name: collectionName })]
