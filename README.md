@@ -13,6 +13,11 @@ syncs many CRDTs (e.g. Yjs documents) efficiently.
 - (experimental software)
 
 ### Demos
+The demos sync changes to server that I set up on `ystream.yjs.dev`. You can run
+your own "server" using `npm run ws-server`. Note that a server is not strictly
+required to sync ystreams. It is possible to write p2p connection providers for
+ystream.
+
 #### Sync collection to filesystem
 - run `./bin/yfs.js --init dir --collection my-collection-name` to sync `dir` to
   a collection.
